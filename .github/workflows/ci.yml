@@ -1,0 +1,25 @@
+name: LTI CI
+
+on: [push, pull_request]
+
+jobs:
+  lti:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start lab
+        run: make up
+
+      - name: Install plugin
+        run: make install
+
+      - name: Enable LTI
+        run: make enable-lti
+
+      - name: Seed data
+        run: make seed
+
+      - name: Smoke test
+        run: make test
+

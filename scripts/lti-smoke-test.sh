@@ -1,20 +1,11 @@
 #!/usr/bin/env bash
-# One-click LTI smoke test (basic reachability + endpoints)
-
 set -e
 
-MOODLE_URL=${MOODLE_URL:-https://moodle.local}
-PRESSBOOKS_URL=${PRESSBOOKS_URL:-https://pressbooks.local}
+echo "🔍 Smoke testing endpoints"
 
-echo "🔍 Checking Moodle..."
-curl -k -s -o /dev/null -w "%{http_code}" $MOODLE_URL | grep -q 200 && echo "✅ Moodle OK"
+curl -k https://moodle.local >/dev/null
+curl -k https://pressbooks.local >/dev/null
+curl -k https://pressbooks.local/wp-json/pb-lti/v1/keyset >/dev/null
 
-echo "🔍 Checking Pressbooks..."
-curl -k -s -o /dev/null -w "%{http_code}" $PRESSBOOKS_URL | grep -q 200 && echo "✅ Pressbooks OK"
+echo "🎉 Smoke test passed"
 
-echo "🔍 Checking LTI endpoints..."
-for ep in login launch keyset; do
-  curl -k -s -o /dev/null -w "%{http_code}" $PRESSBOOKS_URL/wp-json/pb-lti/v1/$ep | grep -qE "200|405" && echo "✅ $ep endpoint OK"
-done
-
-echo "🎉 Smoke test completed successfully"

@@ -1,0 +1,35 @@
+version: "3.9"
+
+networks:
+  lti-net:
+
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+    networks: [lti-net]
+
+  moodle:
+    image: bitnami/moodle:5.1
+    environment:
+      MOODLE_DATABASE_HOST: mysql
+      MOODLE_DATABASE_USER: root
+      MOODLE_DATABASE_PASSWORD: root
+      MOODLE_DATABASE_NAME: moodle
+      MOODLE_SITE_NAME: "Moodle Local"
+    ports:
+      - "8080:8080"
+    networks: [lti-net]
+
+  pressbooks:
+    image: pressbooks/pressbooks:latest
+    environment:
+      WORDPRESS_DB_HOST: mysql
+      WORDPRESS_DB_USER: root
+      WORDPRESS_DB_PASSWORD: root
+      WORDPRESS_DB_NAME: pressbooks
+    ports:
+      - "8081:80"
+    networks: [lti-net]
+
