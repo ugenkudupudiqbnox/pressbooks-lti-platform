@@ -1,5 +1,12 @@
 # Pressbooks LTI Platform
 
+[![CI](https://github.com/ugenkudupudiqbnox/pressbooks-lti-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/ugenkudupudiqbnox/pressbooks-lti-platform/actions/workflows/ci.yml)
+![Coverage](https://img.shields.io/badge/test%20coverage-integration%20%2B%20smoke-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+![LTI](https://img.shields.io/badge/LTI-1.3%20%2B%20Advantage-blue)
+![Pressbooks](https://img.shields.io/badge/Pressbooks-Bedrock-orange)
+![Moodle](https://img.shields.io/badge/Tested%20with-Moodle-success)
+
 An **open, production‑grade LTI 1.3 + LTI Advantage platform** for Pressbooks,
 built for **universities, OER initiatives, and public institutions**.
 
