@@ -1,0 +1,37 @@
+
+name: LTI Matrix CI
+
+on: [push, pull_request]
+
+jobs:
+  lti:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        moodle: ["4.1", "5.1"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set Moodle version
+        run: echo "MOODLE_VERSION=${{ matrix.moodle }}" >> $GITHUB_ENV
+
+      - name: Start lab
+        run: make up
+
+      - name: Install Pressbooks
+        run: make install-pressbooks
+
+      - name: Install plugin
+        run: make install
+
+      - name: Register LTI
+        run: make enable-lti
+
+      - name: Seed data
+        run: make seed seed-books
+
+      - name: Run advanced tests
+        run: |
+          php scripts/ci-verify-jwt-crypto.php "$JWT"
+          php scripts/ci-test-ags-differential.php
+          php scripts/ci-test-per-course-grades.php
