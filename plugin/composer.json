@@ -1,0 +1,13 @@
+{
+  "name": "braou/pressbooks-lti-platform",
+  "type": "wordpress-plugin",
+  "require": {
+    "php": ">=8.1",
+    "firebase/php-jwt": "^6.10"
+  },
+  "autoload": {
+    "psr-4": {
+      "PB_LTI\\": ""
+    }
+  }
+}
