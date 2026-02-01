@@ -25,17 +25,12 @@ function pb_lti_schema_sql() {
             UNIQUE(platform_issuer, deployment_id)
         ) $charset;",
 
-        "nonces" => "
-        CREATE TABLE {$wpdb->prefix}pb_lti_nonces (
-            nonce VARCHAR(255) PRIMARY KEY,
-            expires_at DATETIME NOT NULL
-        ) $charset;",
-
         "lineitems" => "
         CREATE TABLE {$wpdb->prefix}pb_lti_lineitems (
             id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
             context_id VARCHAR(255) NOT NULL,
-            lineitem_url TEXT NOT NULL
+            lineitem_url TEXT NOT NULL,
+            scopes TEXT NOT NULL
         ) $charset;"
     ];
 }
