@@ -8,10 +8,22 @@ services:
     image: mysql:8.0
     environment:
       MYSQL_ROOT_PASSWORD: root
-    networks: [lti-net]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
   moodle:
     image: bitnami/moodle:5.1
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/login/index.php"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
     environment:
       MOODLE_DATABASE_HOST: mysql
       MOODLE_DATABASE_USER: root
@@ -22,14 +34,28 @@ services:
       - "8080:8080"
     networks: [lti-net]
 
-  pressbooks:
-    image: pressbooks/pressbooks:latest
-    environment:
-      WORDPRESS_DB_HOST: mysql
-      WORDPRESS_DB_USER: root
-      WORDPRESS_DB_PASSWORD: root
-      WORDPRESS_DB_NAME: pressbooks
-    ports:
-      - "8081:80"
-    networks: [lti-net]
-
+pressbooks:
+  image: wordpress:6.4-php8.1-apache
+  depends_on:
+    mysql:
+      condition: service_healthy
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost/wp-login.php"]
+    interval: 10s
+    timeout: 5s
+    retries: 20
+  container_name: pressbooks
+  environment:
+    WORDPRESS_DB_HOST: mysql
+    WORDPRESS_DB_USER: root
+    WORDPRESS_DB_PASSWORD: root
+    WORDPRESS_DB_NAME: pressbooks
+    WORDPRESS_DEBUG: 1
+  volumes:
+    - ./pressbooks:/var/www/html
+  ports:
+    - "8081:80"
+  depends_on:
+    - mysql
+  networks:
+    - lti-net

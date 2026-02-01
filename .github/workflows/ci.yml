@@ -5,21 +5,47 @@ on: [push, pull_request]
 jobs:
   lti:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Start lab
+      - name: Start local lab
         run: make up
 
-      - name: Install plugin
+      - name: Install Pressbooks
+        run: make install-pressbooks
+
+      - name: Install LTI plugin
         run: make install
 
-      - name: Enable LTI
+      - name: Register LTI tool in Moodle
         run: make enable-lti
 
-      - name: Seed data
+      - name: Seed Moodle data
         run: make seed
 
-      - name: Smoke test
+      - name: Run smoke tests
         run: make test
 
+      - name: Deep Linking assertions
+        run: make test-deep-linking
+
+      - name: AGS grade assertion
+        run: make test-ags
+
+      - name: Advanced LTI assertions
+        run: |
+          make test-deep-linking-multi
+          make test-ags-roles
+          make test-grade-values
+
+      - name: Collect CI artifacts
+        if: always()
+        run: make collect-artifacts
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lti-ci-artifacts
+          path: ci-artifacts/

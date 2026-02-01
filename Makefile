@@ -1,35 +1,32 @@
-#
-# Command to run: make up install enable-lti seed test
-#
-
-.PHONY: up down install enable-lti seed test logs reset
-
-LAB_DIR=lti-local-lab
+.PHONY: up install-pressbooks install enable-lti seed seed-books test test-deep-linking test-ags
 
 all:
-	make up install enable-lti seed test
+	make up install-pressbooks install enable-lti seed seed-books test-deep-linking test-ags
 
 up:
-	@bash scripts/lab-up.sh
+	bash scripts/lab-up.sh
+
+install-pressbooks:
+	bash scripts/install-pressbooks.sh
 
 install:
-	@bash scripts/install-plugin.sh
+	bash scripts/install-plugin.sh
 
 enable-lti:
-	@bash scripts/moodle-register-lti.sh
+	bash scripts/moodle-register-lti.sh
 
 seed:
-	@bash scripts/seed-moodle.sh
+	bash scripts/seed-moodle.sh
+
+seed-books:
+	bash scripts/seed-pressbooks.sh
 
 test:
-	@bash scripts/lti-smoke-test.sh
+	bash scripts/lti-smoke-test.sh
 
-logs:
-	docker compose -f $(LAB_DIR)/docker-compose.yml logs -f
+test-deep-linking:
+	bash scripts/ci-test-deep-linking.sh
 
-down:
-	docker compose -f $(LAB_DIR)/docker-compose.yml down
-
-reset:
-	docker compose -f $(LAB_DIR)/docker-compose.yml down -v
+test-ags:
+	bash scripts/ci-test-ags-grade.sh
 
