@@ -20,7 +20,6 @@ class LoginController {
 
         $state = wp_generate_password(32, false);
         $nonce = wp_generate_password(32, false);
-
         set_transient('pb_lti_state_' . $state, $nonce, 60);
 
         $auth_url = add_query_arg([

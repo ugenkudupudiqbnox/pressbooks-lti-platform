@@ -3,7 +3,6 @@ defined('ABSPATH') || exit;
 
 use PB_LTI\Controllers\LoginController;
 use PB_LTI\Controllers\LaunchController;
-use PB_LTI\Controllers\KeysetController;
 
 add_action('rest_api_init', function () {
     register_rest_route('pb-lti/v1', '/login', [

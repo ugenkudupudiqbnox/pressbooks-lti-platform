@@ -7,19 +7,25 @@ use Firebase\JWT\Key;
 class JwtValidator {
     public static function validate(string $jwt) {
         $header = JWT::jsonDecode(JWT::urlsafeB64Decode(explode('.', $jwt)[0]));
-        $iss = null;
-
         $payload = JWT::jsonDecode(JWT::urlsafeB64Decode(explode('.', $jwt)[1]));
-        $iss = $payload->iss;
 
-        $platform = PlatformRegistry::find($iss);
+        $platform = PlatformRegistry::find($payload->iss);
         if (!$platform) {
             throw new \Exception('Unknown issuer');
         }
 
-        $jwks = json_decode(file_get_contents($platform->jwks_url), true);
-        $key = $jwks['keys'][0];
+        if (!in_array($platform->client_id, (array)$payload->aud, true)) {
+            throw new \Exception('Invalid audience');
+        }
 
-        return JWT::decode($jwt, new Key(JWT::urlsafeB64Decode($key['n']), 'RS256'));
+        $jwks = json_decode(file_get_contents($platform->jwks_url), true);
+        foreach ($jwks['keys'] as $jwk) {
+            try {
+                return JWT::decode($jwt, new Key(JWT::urlsafeB64Decode($jwk['n']), 'RS256'));
+            } catch (\Exception $e) {
+                continue;
+            }
+        }
+        throw new \Exception('JWT signature invalid');
     }
 }

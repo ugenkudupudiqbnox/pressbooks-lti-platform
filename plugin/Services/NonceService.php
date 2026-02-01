@@ -6,11 +6,7 @@ class NonceService {
         global $wpdb;
         $table = $wpdb->prefix . 'pb_lti_nonces';
 
-        $exists = $wpdb->get_var($wpdb->prepare(
-            "SELECT nonce FROM $table WHERE nonce=%s", $nonce
-        ));
-
-        if ($exists) {
+        if ($wpdb->get_var($wpdb->prepare("SELECT nonce FROM $table WHERE nonce=%s", $nonce))) {
             throw new \Exception('Replay detected');
         }
 

@@ -16,6 +16,14 @@ function pb_lti_schema_sql() {
             created_at DATETIME NOT NULL
         ) $charset;",
 
+        "deployments" => "
+        CREATE TABLE {$wpdb->prefix}pb_lti_deployments (
+            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            platform_issuer VARCHAR(255) NOT NULL,
+            deployment_id VARCHAR(255) NOT NULL,
+            UNIQUE(platform_issuer, deployment_id)
+        ) $charset;",
+
         "nonces" => "
         CREATE TABLE {$wpdb->prefix}pb_lti_nonces (
             nonce VARCHAR(255) PRIMARY KEY,

@@ -3,6 +3,8 @@ namespace PB_LTI\Controllers;
 
 use PB_LTI\Services\JwtValidator;
 use PB_LTI\Services\NonceService;
+use PB_LTI\Services\DeploymentRegistry;
+use PB_LTI\Services\RoleMapper;
 
 class LaunchController {
     public static function handle($request) {
@@ -12,11 +14,16 @@ class LaunchController {
         }
 
         $claims = JwtValidator::validate($jwt);
+
+        DeploymentRegistry::validate(
+            $claims->iss,
+            $claims->{'https://purl.imsglobal.org/spec/lti/claim/deployment_id'}
+        );
+
         NonceService::consume($claims->nonce);
 
-        wp_set_current_user(1);
-        wp_set_auth_cookie(1);
+        $user_id = RoleMapper::login_user($claims);
 
-        return ['status' => 'ok'];
+        return ['status' => 'ok', 'user_id' => $user_id];
     }
 }
