@@ -49,3 +49,39 @@ jobs:
         with:
           name: lti-ci-artifacts
           path: ci-artifacts/
+
+      - name: Deep Linking return URL verification
+        run: bash scripts/ci-test-deep-link-return.sh
+
+      - name: JWT claim assertions
+        run: php scripts/ci-assert-jwt-claims.php "$JWT"
+
+      - name: Generate CI compliance evidence
+        if: always()
+        run: bash scripts/ci-generate-evidence.sh
+
+      - name: Upload compliance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lti-ci-compliance-evidence
+          path: ci-evidence/
+
+      - name: Generate 1EdTech certification evidence
+        if: always()
+        run: bash scripts/ci-generate-evidence-1edtech.sh
+
+      - name: Upload 1EdTech evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 1edtech-certification-evidence
+          path: ci-evidence/
+
+      - name: Upload signed compliance PDF
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lti-1edtech-compliance-pdf
+          path: CI_1EdTech_Compliance_Evidence.pdf
+
