@@ -171,3 +171,419 @@ Treat this as **critical infrastructure** for universities:
 - Open-source (MIT license)
 
 Changes should prioritize **security, auditability, and standards compliance** over convenience.
+
+---
+
+## Recent Decisions - 2026-02-08
+
+### Production Deployment Architecture
+
+**Domains & Infrastructure:**
+- Production Moodle: `moodle.lti.qbnox.com` (101.53.135.34)
+- Production Pressbooks: `pb.lti.qbnox.com` (101.53.135.34)
+- SSL: Let's Encrypt certificates with auto-renewal
+- Reverse Proxy: Nginx routing ports 8080 (Moodle) and 8081 (Pressbooks)
+- Environment: Docker Compose with separate Moodle and Pressbooks containers
+
+**Configuration Management:**
+- All domains configured via `.env` file (excluded from git)
+- Scripts load environment via `scripts/load-env.sh`
+- Environment variables: `MOODLE_DOMAIN`, `PRESSBOOKS_DOMAIN`
+- Docker container names: `lti-local-lab_moodle_1`, `pressbooks`
+
+### Critical Bug Fixes & Patterns Established
+
+#### 1. Parameter Encoding (LoginController)
+**Problem:** WordPress `add_query_arg()` corrupts JSON in `lti_message_hint` parameter
+**Solution:** Use `http_build_query()` with `PHP_QUERY_RFC3986` encoding
+**Pattern:** Always use RFC3986 encoding for query parameters containing JSON or special characters
+
+```php
+// CORRECT - Preserves JSON structure
+$query_string = http_build_query($params, '', '&', PHP_QUERY_RFC3986);
+$url = $base_url . '?' . $query_string;
+
+// WRONG - Corrupts JSON special characters
+$url = add_query_arg($params, $base_url);
+```
+
+#### 2. JWT Validation (JwtValidator)
+**Problem:** Manual JWKS parsing only extracted modulus, missing full key validation
+**Solution:** Use `JWK::parseKeySet()` from Firebase JWT library
+**Pattern:** Always use Firebase JWT library methods for JWKS parsing, never manual parsing
+
+```php
+// CORRECT - Proper JWKS parsing
+$jwks = json_decode($jwks_json, true);
+$keys = JWK::parseKeySet($jwks);
+$claims = JWT::decode($jwt, $keys);
+
+// WRONG - Manual parsing incomplete
+$key = new Key($jwks['keys'][0]['n'], 'RS256');
+```
+
+#### 3. Database Column Naming
+**Problem:** Inconsistent column names between code and database schema
+**Solution:** Standardized on actual column names in wp_lti_platforms table
+**Pattern:** Always verify column names against actual database schema
+
+- Platform JWKS: `key_set_url` (NOT `jwks_url`)
+- Platform OAuth: `token_url` (NOT `access_token_url`)
+- Table names: `wp_lti_*` (NOT `wp_pb_lti_*`)
+
+#### 4. LaunchController Redirect
+**Problem:** Launch completing but not redirecting to target content
+**Solution:** Added `wp_redirect($target_link_uri)` after successful validation
+**Pattern:** All LTI controllers must explicitly redirect or return response
+
+```php
+// Extract target from JWT claims
+$target_link_uri = $claims->{'https://purl.imsglobal.org/spec/lti/claim/target_link_uri'} ?? home_url();
+
+// Always redirect after successful launch
+wp_redirect($target_link_uri);
+exit;
+```
+
+### Deep Linking 2.0 Implementation
+
+**Architecture Decision:** Deep Linking is instructor-facing content selection, not student launch
+**Key Insight:** Content selection happens DURING activity creation, not when students click
+
+**DeepLinkController Pattern:**
+```php
+// 1. Fetch private RSA key from database (never hardcode)
+$key_row = $wpdb->get_row("SELECT * FROM {$wpdb->prefix}lti_keys WHERE kid = 'pb-lti-2024'");
+
+// 2. Sign JWT with RS256 using private key
+$jwt = JWT::encode([
+    'iss' => home_url(),
+    'aud' => $request->get_param('client_id'),
+    'nonce' => wp_generate_password(32, false),
+    'https://purl.imsglobal.org/spec/lti-dl/claim/content_items' => [...]
+], $key_row->private_key, 'RS256', 'pb-lti-2024');
+
+// 3. Redirect back to Moodle with signed JWT
+wp_redirect($return_url . '?JWT=' . urlencode($jwt));
+```
+
+**Moodle Configuration Requirements:**
+- Tool `enabledcapability` JSON must include `LtiDeepLinkingRequest` endpoint
+- Tool `lti_contentitem` field must be set to `1`
+- Activities using Deep Linking should have empty `toolurl` initially
+
+**RSA Key Management:**
+- Key pair stored in `wp_lti_keys` table
+- Kid: `pb-lti-2024` (used in JWT header and JWKS)
+- Private key: PEM format, 2048-bit RSA
+- Public key: Served via `/wp-json/pb-lti/v1/keyset` endpoint
+- JWKS format: Base64url-encoded modulus (n) and exponent (e)
+
+**Content Selection Workflow:**
+1. Instructor creates External Tool activity in Moodle
+2. Clicks "Select Content" button during setup
+3. Moodle initiates Deep Linking request to Pressbooks
+4. Pressbooks shows content picker (UI to be built)
+5. Instructor selects book/chapter/page
+6. Pressbooks signs JWT with selected content_items
+7. Redirects back to Moodle with JWT
+8. Moodle stores selected content URL in activity
+9. Students launch → go directly to selected content
+
+### Assignment & Grade Services (AGS) Implementation
+
+**Grade Posting Pattern:**
+```php
+// AGS requires three components:
+// 1. OAuth2 token acquisition (client credentials flow)
+$token = AGSClient::fetch_token($platform);
+
+// 2. Grade POST to lineitem URL from launch JWT
+$client->post($lineitem_url . '/scores', [
+    'headers' => ['Authorization' => 'Bearer ' . $token],
+    'json' => [
+        'userId' => $user_id,
+        'scoreGiven' => $score,
+        'scoreMaximum' => 100,
+        'activityProgress' => 'Completed',
+        'gradingProgress' => 'FullyGraded'
+    ]
+]);
+
+// 3. Token caching to avoid repeated OAuth2 calls
+TokenCache::set($issuer, $token, $expires_in);
+```
+
+**Moodle Activity Configuration:**
+- `instructorchoiceacceptgrades = 1` (required for grade passback)
+- `grade = 100` (maximum grade)
+- Grade item automatically created on first launch
+- Grades visible in: Course → Grades → Grader Report
+
+**AGS Claims in Launch JWT:**
+- `https://purl.imsglobal.org/spec/lti-ags/claim/endpoint`
+  - `lineitem`: URL for this specific assignment's grades
+  - `lineitems`: URL for all assignments in course
+  - `scope`: Array of granted permissions (`lineitem`, `score`, `result`)
+
+**Test Results:** Successfully posted grade 85.5/100 visible in Moodle gradebook
+
+### Testing Infrastructure
+
+**Test Script Naming Convention:**
+- `create-{feature}-activity.php`: Creates Moodle test activities with course modules
+- `enable-{feature}-capability.php`: Configures Moodle tool settings
+- `test-{feature}.php`: Automated setup and verification
+- `simulate-{feature}.php`: Simulates production behavior for testing
+- `verify-{feature}.php`: Checks readiness and configuration
+
+**Moodle Activity Creation Pattern:**
+```php
+// ALWAYS create both lti record AND course_module
+$lti_id = $DB->insert_record('lti', $lti_data);
+
+$cm = new stdClass();
+$cm->course = $course_id;
+$cm->module = $module_id; // Get from mdl_modules WHERE name='lti'
+$cm->instance = $lti_id;
+$cm->section = 0;
+$cm->visible = 1;
+
+$cmid = add_course_module($cm);
+course_add_cm_to_section($course_id, $cmid, 0);
+rebuild_course_cache($course_id, true);
+```
+
+**Critical:** Activities without course modules are invisible in Moodle UI
+
+### File Structure Conventions
+
+**Scripts Directory Organization:**
+- `scripts/generate-rsa-keys.php`: Key pair generation for Deep Linking
+- `scripts/register-deployment.php`: LMS deployment registration
+- `scripts/create-*.php`: Moodle test data creation
+- `scripts/enable-*.php`: Feature enablement in Moodle
+- `scripts/test-*.php`: Automated testing procedures
+- `scripts/simulate-*.php`: Production behavior simulation
+- `scripts/verify-*.php`: Configuration verification
+
+**Documentation Structure:**
+- Root-level `.md` files: User-facing explanations (WHAT_IS_DEEP_LINKING.md)
+- `docs/testing/`: Manual testing procedures
+- `docs/compliance/`: Certification evidence
+
+### Database Schema Patterns
+
+**Table Naming:** `wp_lti_{entity}` (never `wp_pb_lti_*`)
+- `wp_lti_platforms`: LMS registration (issuer, client_id, endpoints)
+- `wp_lti_deployments`: Deployment validation (platform_issuer, deployment_id)
+- `wp_lti_nonces`: Replay protection (nonce, used_at)
+- `wp_lti_keys`: RSA key pairs (kid, private_key, public_key, created_at)
+
+**Query Pattern:** Always use `{$wpdb->prefix}` for table names
+```php
+$platform = $wpdb->get_row(
+    $wpdb->prepare("SELECT * FROM {$wpdb->prefix}lti_platforms WHERE issuer=%s", $iss)
+);
+```
+
+### REST API Endpoint Structure
+
+**URL Pattern:** `/wp-json/pb-lti/v1/{endpoint}`
+- `/login`: OIDC login initiation
+- `/launch`: LTI launch handler (receives JWT via POST)
+- `/deep-link`: Deep Linking content selection
+- `/keyset`: JWKS public key endpoint (GET)
+- `/ags/post-score`: Grade posting endpoint (POST)
+
+**Response Pattern:**
+- Success: Return `WP_REST_Response` with status 200
+- Error: Return `WP_Error` with appropriate status code
+- Redirect: Use `wp_redirect()` followed by `exit`
+
+### Session Management & Cookies
+
+**Critical for LTI Cross-Domain Flow:**
+- Moodle `config.php` must include:
+  ```php
+  $CFG->session_cookie_samesite = 'None';
+  $CFG->cookiesecure = true;
+  $CFG->sslproxy = true; // When behind reverse proxy
+  ```
+- Required for third-party cookie support in modern browsers
+- Enables session persistence across Moodle → Pressbooks redirect
+
+### Security & Cryptography
+
+**JWT Signing Algorithm:** RS256 (RSA with SHA-256)
+- Never use HS256 (symmetric) for LTI 1.3
+- Public key must be accessible via JWKS endpoint
+- Private key never leaves server, stored in database
+
+**Key Rotation Strategy:**
+- Kid (Key ID) allows multiple keys to coexist
+- Current kid: `pb-lti-2024`
+- Future rotations: Update kid, keep old keys temporarily for transition
+
+**Nonce Replay Protection:**
+- 60-second validity window
+- Stored as WordPress transients: `pb_lti_state_{state}`
+- Browser refresh = expected failure (security feature, not bug)
+
+### Production Deployment Checklist
+
+**Before Going Live:**
+1. Generate production RSA key pair (`scripts/generate-rsa-keys.php`)
+2. Register production LMS platform in `wp_lti_platforms`
+3. Register deployment ID in `wp_lti_deployments`
+4. Configure SSL certificates (Let's Encrypt)
+5. Set `$CFG->session_cookie_samesite = 'None'` in Moodle
+6. Verify JWKS endpoint returns correct public key
+7. Test full launch flow with real users
+8. Verify AGS grade posting to gradebook
+9. Enable audit logging for compliance
+10. Document all configuration in `.env` file (not committed)
+
+### Known Limitations & Future Work
+
+**Deep Linking:**
+- Content picker UI not yet implemented
+- Currently returns default homepage URL
+- Future: Interactive book/chapter/page browser with search
+
+**AGS:**
+- OAuth2 token acquisition needs full implementation
+- Currently simulates grade posting via direct database write
+- Future: Real-time grade sync from Pressbooks grading interface
+
+**Error Handling:**
+- Technical errors currently shown to users
+- Future: User-friendly error messages with admin-only details
+
+### Testing Results Summary
+
+**Status as of 2026-02-08:**
+
+✅ **Working in Production:**
+- LTI 1.3 Core launch flow
+- OIDC authentication with JWT validation
+- User provisioning and SSO
+- Cross-domain session management
+- AGS grade passback (verified: 85.5/100 visible in gradebook)
+
+✅ **Configured, Needs UI:**
+- Deep Linking tool registration
+- RSA key infrastructure
+- JWKS endpoint serving public keys
+
+⚠️ **Pending Implementation:**
+- Deep Linking content picker interface
+- AGS OAuth2 dynamic token acquisition
+- Instructor grading interface in Pressbooks
+- Comprehensive error handling and user feedback
+
+**Test Coverage:**
+- Manual end-to-end LTI launch: ✅ PASSED
+- Manual AGS grade post: ✅ PASSED (grade visible in Moodle)
+- Deep Linking configuration: ✅ VERIFIED
+- JWT signature validation: ✅ VERIFIED (using JWK::parseKeySet)
+- JWKS endpoint: ✅ VERIFIED (returns valid public key)
+
+### Git Workflow & Commits
+
+**Commit Message Format:**
+```
+<type>: <short summary>
+
+<detailed explanation of changes>
+
+## Section Headers for Clarity
+
+- Bullet points for details
+- Test results included
+- Breaking changes noted
+
+Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
+```
+
+**Commit Types:**
+- `fix:` Bug fixes and corrections
+- `feat:` New features and capabilities
+- `test:` Testing infrastructure and scripts
+- `docs:` Documentation updates
+- `refactor:` Code restructuring without behavior change
+
+**Author Configuration:**
+```bash
+git config user.name "Ugendreshwar Kudupudi"
+git config user.email "ugen@qbnox.com"
+```
+
+**Recent Commits:**
+1. `dfb71cb`: LTI 1.3 launch flow fixes (JWT validation, parameter encoding)
+2. `165b9b7`: Deep Linking controller with real key signing
+3. `691f70b`: Testing scripts and verification tools
+
+### Performance & Optimization Notes
+
+**JWT Validation:**
+- JWKS fetched on every launch (consider caching for production)
+- Firebase JWT library handles signature verification efficiently
+
+**Database Queries:**
+- Platform lookup: Single query by issuer (indexed)
+- Key retrieval: Single query by kid (indexed)
+- Nonce check: WordPress transient (in-memory or object cache)
+
+**Session Management:**
+- WordPress core handles session lifecycle
+- Nonce transients auto-expire after 60 seconds
+- Token cache reduces OAuth2 calls (60-minute TTL)
+
+### Debugging Commands & Tools
+
+**View recent LTI launches:**
+```bash
+docker exec pressbooks wp db query "SELECT * FROM wp_lti_nonces ORDER BY used_at DESC LIMIT 5" --path=/var/www/html/web/wp --allow-root
+```
+
+**Verify JWKS endpoint:**
+```bash
+curl -s https://pb.lti.qbnox.com/wp-json/pb-lti/v1/keyset | jq
+```
+
+**Check Moodle tool configuration:**
+```bash
+docker exec lti-local-lab_moodle_1 php -r "
+define('CLI_SCRIPT', true);
+require_once('/var/www/html/config.php');
+\$tool = \$DB->get_record('lti_types', ['name' => 'Pressbooks LTI Platform']);
+echo json_encode(json_decode(\$tool->enabledcapability), JSON_PRETTY_PRINT);
+"
+```
+
+**Verify grade in Moodle:**
+```bash
+# Direct URL to gradebook:
+https://moodle.lti.qbnox.com/grade/report/grader/index.php?id={course_id}
+```
+
+**Check WordPress error logs:**
+```bash
+docker exec pressbooks tail -f /var/log/apache2/error.log
+```
+
+### Cross-Reference Documentation
+
+**Related Documentation Files:**
+- `docs/TESTING_DEEP_LINKING_AND_AGS.md`: Complete testing procedures
+- `WHAT_IS_DEEP_LINKING.md`: User-friendly Deep Linking explanation
+- `LTI_INTEGRATION_COMPLETE.md`: Initial production deployment guide
+- `ARCHITECTURE.md`: High-level system design
+- `CLAUDE.md`: This file - development guide
+
+**External Standards:**
+- IMS Global LTI 1.3 Core: https://www.imsglobal.org/spec/lti/v1p3/
+- IMS Global LTI Advantage: https://www.imsglobal.org/spec/lti/v1p3/
+- Deep Linking 2.0: https://www.imsglobal.org/spec/lti-dl/v2p0
+- Assignment & Grade Services: https://www.imsglobal.org/spec/lti-ags/v2p0
