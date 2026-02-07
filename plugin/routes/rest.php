@@ -42,7 +42,18 @@ add_action('plugins_loaded', function () {
     register_rest_route('pb-lti/v1', '/keyset', [
         'methods' => 'GET',
         'callback' => function() {
-            // Return public JWK Set for JWT signature verification
+            global $wpdb;
+            $key = $wpdb->get_row("SELECT * FROM {$wpdb->prefix}lti_keys WHERE kid = 'pb-lti-2024'");
+            
+            if (!$key) {
+                return new WP_REST_Response(['error' => 'No keys configured'], 500);
+            }
+            
+            // Extract public key components
+            $public_key_details = openssl_pkey_get_details(openssl_pkey_get_public($key->public_key));
+            $n = rtrim(strtr(base64_encode($public_key_details['rsa']['n']), '+/', '-_'), '=');
+            $e = rtrim(strtr(base64_encode($public_key_details['rsa']['e']), '+/', '-_'), '=');
+            
             $keys = [
                 'keys' => [
                     [
@@ -50,8 +61,8 @@ add_action('plugins_loaded', function () {
                         'use' => 'sig',
                         'kid' => 'pb-lti-2024',
                         'alg' => 'RS256',
-                        'n' => '', // TODO: Generate RSA public key
-                        'e' => 'AQAB'
+                        'n' => $n,
+                        'e' => $e
                     ]
                 ]
             ];

@@ -24,6 +24,11 @@ class LaunchController {
 
         $user_id = RoleMapper::login_user($claims);
 
-        return ['status' => 'ok', 'user_id' => $user_id];
+        // Get target link URI from claims
+        $target_link_uri = $claims->{'https://purl.imsglobal.org/spec/lti/claim/target_link_uri'} ?? home_url();
+
+        // Redirect to target or home
+        wp_redirect($target_link_uri);
+        exit;
     }
 }
