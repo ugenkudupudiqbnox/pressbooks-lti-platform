@@ -110,6 +110,16 @@ class DeepLinkController {
             return new \WP_Error('invalid_params', 'Missing required parameters', ['status' => 400]);
         }
 
+        // Look up platform issuer from client_id
+        $platform = $wpdb->get_row($wpdb->prepare(
+            "SELECT issuer FROM {$wpdb->prefix}lti_platforms WHERE client_id = %s",
+            $client_id
+        ));
+
+        if (!$platform) {
+            return new \WP_Error('unknown_platform', 'Platform not registered', ['status' => 400]);
+        }
+
         // Fetch private key from database
         $key_row = $wpdb->get_row("SELECT * FROM {$wpdb->prefix}lti_keys WHERE kid = 'pb-lti-2024'");
         if (!$key_row) {
@@ -127,9 +137,12 @@ class DeepLinkController {
         }
 
         // Build Deep Linking JWT response
+        // CRITICAL: For Moodle compatibility:
+        // - iss MUST be the client_id (tool's identifier in the platform)
+        // - aud MUST be the platform's issuer URL
         $jwt_payload = [
-            'iss' => home_url(),
-            'aud' => $client_id,
+            'iss' => $client_id,  // Tool's identifier (client_id)
+            'aud' => $platform->issuer,  // Platform's issuer URL
             'iat' => time(),
             'exp' => time() + 300,
             'nonce' => wp_generate_password(32, false),
@@ -137,6 +150,9 @@ class DeepLinkController {
             'https://purl.imsglobal.org/spec/lti/claim/version' => '1.3.0',
             'https://purl.imsglobal.org/spec/lti-dl/claim/content_items' => [$content_item]
         ];
+
+        // Debug logging
+        error_log('[PB-LTI Deep Link] JWT Claims: iss=' . $client_id . ', aud=' . $platform->issuer);
 
         // Sign JWT with RS256
         $jwt = JWT::encode($jwt_payload, $key_row->private_key, 'RS256', 'pb-lti-2024');
