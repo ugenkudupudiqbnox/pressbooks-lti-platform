@@ -37,6 +37,9 @@ class LaunchController {
         // Get target link URI from claims
         $target_link_uri = $claims->{'https://purl.imsglobal.org/spec/lti/claim/target_link_uri'} ?? home_url();
 
+        // Add LTI embed parameter to show clean view (just content, no site chrome)
+        $target_link_uri = add_query_arg('lti_launch', '1', $target_link_uri);
+
         // Redirect to target or home
         wp_redirect($target_link_uri);
         exit;
