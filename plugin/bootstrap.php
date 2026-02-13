@@ -17,6 +17,7 @@ require_once PB_LTI_PATH.'Services/AGSClient.php';
 require_once PB_LTI_PATH.'Services/LineItemService.php';
 require_once PB_LTI_PATH.'Services/ContentService.php';
 require_once PB_LTI_PATH.'Services/EmbedService.php';
+require_once PB_LTI_PATH.'Services/H5PGradeSync.php';
 
 // Load all Controllers
 require_once PB_LTI_PATH.'Controllers/LoginController.php';
@@ -31,3 +32,6 @@ require_once PB_LTI_PATH.'ajax/handlers.php';
 
 // Initialize embed mode for LTI launches (hides site chrome)
 add_action('template_redirect', ['PB_LTI\Services\EmbedService', 'init'], 1);
+
+// Initialize H5P grade sync (sends H5P scores to Moodle via AGS)
+add_action('init', ['PB_LTI\Services\H5PGradeSync', 'init']);
