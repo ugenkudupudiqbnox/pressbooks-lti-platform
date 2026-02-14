@@ -2,11 +2,15 @@
   <img src="assets/logo.png" width="180" alt="Qbnox LTI Platform Logo" />
 </p>
 
-# Qbnox LTI Platform for Pressbooks
+<h1 align="center">Qbnox LTI Platform</h1>
+<p align="center">
+  Minimal • Secure • Standards-Compliant LTI 1.3 Platform
+</p>
 
 [![CI](https://github.com/ugenkudupudiqbnox/qbnox-lti-platform/actions/workflows/ci-matrix.yml/badge.svg)](https://github.com/ugenkudupudiqbnox/qbnox-lti-platform/actions/workflows/ci.yml)
-![Coverage](https://img.shields.io/badge/test%20coverage-integration%20%2B%20smoke-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
+![License](https://img.shields.io/badge/license-MIT-red)
+![LTI](https://img.shields.io/badge/LTI-1.3-orange)
+![Open Source](https://img.shields.io/badge/Open%20Source-Yes-red)![License](https://img.shields.io/badge/license-MIT-green)
 ![LTI](https://img.shields.io/badge/LTI-1.3%20%2B%20Advantage-blue)
 ![Pressbooks](https://img.shields.io/badge/Pressbooks-Bedrock-orange)
 ![Moodle](https://img.shields.io/badge/Tested%20with-Moodle-success)
