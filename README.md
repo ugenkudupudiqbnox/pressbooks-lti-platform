@@ -2,7 +2,7 @@
   <img src="assets/logo.png" width="180" alt="Qbnox LTI Platform Logo" />
 </p>
 
-<h1 align="center">Qbnox LTI Platform</h1>
+<h1 align="center">Qbnox LTI 1.3 Support for Pressbooks</h1>
 <p align="center">
   Minimal • Secure • Standards-Compliant LTI 1.3 Platform
 </p>
