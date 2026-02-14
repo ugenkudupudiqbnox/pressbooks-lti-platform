@@ -69,8 +69,8 @@ services:
       DB_USER: root
       DB_PASSWORD: root
       DB_HOST: mysql
-      WP_HOME: https://pb.lti.qbnox.com
-      DOMAIN_CURRENT_SITE: pb.lti.qbnox.com
+      WP_HOME: ${PRESSBOOKS_URL:-http://localhost:8081}
+      DOMAIN_CURRENT_SITE: ${PRESSBOOKS_DOMAIN:-localhost}
       WP_ADMIN_USER: admin
       WP_ADMIN_PASSWORD: admin
       WP_ADMIN_EMAIL: admin@example.com
