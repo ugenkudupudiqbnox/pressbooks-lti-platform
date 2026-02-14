@@ -54,6 +54,16 @@ fi
 DC="$DC -f $COMPOSE_FILE_PATH"
 
 #############################################
+# Ensure containers are started
+#############################################
+
+log "Starting Docker containers..."
+$DC up -d
+
+# Give Docker a moment to register services
+sleep 5
+
+#############################################
 # Defaults (CI safe)
 #############################################
 DB_CONTAINER="${DB_CONTAINER:-mysql}"
