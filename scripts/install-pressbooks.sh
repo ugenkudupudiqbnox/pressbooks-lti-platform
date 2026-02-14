@@ -149,14 +149,35 @@ else
   echo '✅ Multisite already configured'
 fi
 
-# Install Pressbooks plugin if missing
-echo '📦 Checking Pressbooks plugin...'
-if ! wp plugin is-installed pressbooks --allow-root; then
-  echo '⏳ Downloading and installing Pressbooks (this may take 1-2 minutes)...'
-  wp plugin install pressbooks --activate-network --allow-root
-  echo '✅ Pressbooks installed and activated'
+# Install Composer if not present
+if ! command -v composer &> /dev/null; then
+  echo '📥 Installing Composer...'
+  curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+  echo '✅ Composer installed'
+fi
+
+# Install Pressbooks via Composer (Bedrock method)
+echo '📦 Installing Pressbooks and dependencies...'
+if [ ! -d /var/www/html/web/app/plugins/pressbooks ]; then
+  echo '⏳ Running composer install (this may take 2-3 minutes)...'
+
+  # Install all dependencies from composer.json (includes Pressbooks)
+  cd /var/www/html
+  composer install --no-interaction --no-dev --optimize-autoloader
+
+  echo '✅ Pressbooks and dependencies installed'
 else
   echo '✅ Pressbooks already installed'
+fi
+
+# Activate Pressbooks network-wide
+if wp plugin is-installed pressbooks --allow-root 2>/dev/null; then
+  if ! wp plugin is-active-for-network pressbooks --allow-root 2>/dev/null; then
+    wp plugin activate pressbooks --network --allow-root
+    echo '✅ Pressbooks activated network-wide'
+  else
+    echo '✅ Pressbooks already active'
+  fi
 fi
 
 # Install H5P for interactive content
