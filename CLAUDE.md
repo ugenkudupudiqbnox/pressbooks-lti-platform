@@ -2347,3 +2347,662 @@ Comprehensive documentation reduces recurring support questions.
 
 ---
 
+
+---
+
+## Recent Decisions - 2026-02-15
+
+### Chapter-Specific Grade Routing Fix (CRITICAL BUG FIX)
+
+**Date**: 2026-02-15  
+**Status**: ✅ Implemented, awaiting testing
+
+#### Problem
+
+Grades from multiple chapters posting to single gradebook item instead of individual columns when using Deep Linking.
+
+**Root Cause:**
+- Lineitems stored per user in `user_meta`
+- When student launched Chapter 2, overwrote Chapter 1's lineitem
+- All H5P grades posted to most recently launched chapter
+
+#### Solution
+
+**Storage Model Change:**
+```php
+// OLD (wrong): Per-user storage
+update_user_meta($user_id, '_lti_ags_lineitem', $url);
+
+// NEW (correct): Per-user + per-chapter storage  
+$lineitem_key = '_lti_ags_lineitem_user_' . $user_id;
+update_post_meta($post_id, $lineitem_key, $url);
+```
+
+**Implementation:**
+1. **LaunchController**: Extract post_id from target URL, store lineitem in post meta
+2. **Multisite Helper**: Added `get_post_id_from_url()` with blog switching
+3. **H5PGradeSyncEnhanced**: Retrieve lineitem from post meta per user+chapter
+4. **Backward Compatibility**: Falls back to user meta if post meta empty
+
+**Files Modified:**
+- `plugin/Controllers/LaunchController.php`
+- `plugin/Services/H5PGradeSyncEnhanced.php`
+
+**Critical Pattern Established:**
+```php
+// Multisite-aware post_id extraction
+private static function get_post_id_from_url($url) {
+    if (is_multisite()) {
+        $blog_id = get_blog_id_from_url(
+            parse_url($url, PHP_URL_HOST),
+            parse_url($url, PHP_URL_PATH)
+        );
+        
+        if ($blog_id) {
+            switch_to_blog($blog_id);
+            $post_id = url_to_postid($url);
+            restore_current_blog();
+            return $post_id;
+        }
+    }
+    
+    return url_to_postid($url);
+}
+```
+
+**Known Issue:** Multisite URL parsing not extracting post_id correctly in production. Needs investigation.
+
+---
+
+### Bidirectional Logout Implementation
+
+**Date**: 2026-02-15  
+**Status**: ✅ Implemented, requires CORS setup
+
+#### Requirement
+
+Auto-logout from Pressbooks when user logs out of Moodle (bidirectional single sign-out).
+
+#### Challenge
+
+LTI 1.3 has no standard logout mechanism. Need custom solution without modifying Moodle code.
+
+#### Solution
+
+**JavaScript-based session monitoring:**
+- Polls Moodle's `core_session_time_remaining` API every 30 seconds
+- Uses `fetch()` with `credentials: 'include'` for session cookies
+- Requires 2 consecutive failures before triggering logout
+- Multiple check triggers: periodic, page focus, tab visibility
+
+**Implementation:**
+```javascript
+// Pattern: Polling with failure tolerance
+function checkMoodleSession() {
+    fetch(moodleUrl + '/lib/ajax/service.php', {
+        method: 'POST',
+        credentials: 'include',
+        body: JSON.stringify([{
+            methodname: 'core_session_time_remaining',
+            args: {}
+        }])
+    })
+    .then(response => {
+        if (response.ok) {
+            failureCount = 0; // Reset on success
+        } else {
+            failureCount++;
+            if (failureCount >= maxFailures) {
+                window.location.href = logoutUrl;
+            }
+        }
+    });
+}
+
+// Multiple triggers for reliability
+setInterval(checkMoodleSession, 30000);
+document.addEventListener('visibilitychange', checkMoodleSession);
+window.addEventListener('focus', checkMoodleSession);
+```
+
+**CORS Requirement:**
+Moodle must allow cross-origin requests from Pressbooks:
+```nginx
+location /lib/ajax/service.php {
+    add_header 'Access-Control-Allow-Origin' 'https://pb.lti.qbnox.com' always;
+    add_header 'Access-Control-Allow-Credentials' 'true' always;
+}
+```
+
+**Files Created:**
+- `plugin/Services/SessionMonitorService.php`
+- `scripts/enable-moodle-cors.sh`
+- `docs/SESSION_MONITOR_TESTING.md`
+
+**Files Modified:**
+- `plugin/bootstrap.php`
+- `plugin/routes/rest.php`
+
+**Alternative Endpoint:** `/wp-json/pb-lti/v1/session/end` for webhook-based logout (if Moodle plugin available).
+
+**Decision:** JavaScript polling chosen over webhook because:
+- No Moodle modification required
+- Works across Moodle versions
+- Simpler deployment
+- Graceful degradation without CORS
+
+---
+
+### Use Moodle Username Directly
+
+**Date**: 2026-02-15  
+**Status**: ✅ Implemented, awaiting test results
+
+#### Requirement
+
+Use Moodle's actual username instead of generating `firstname.lastname` format.
+
+#### Previous Behavior
+
+```
+Moodle username: instructor
+Pressbooks username: test.instructor (generated from firstname + lastname)
+```
+
+#### New Behavior
+
+```
+Moodle username: instructor  
+Pressbooks username: instructor ✅
+```
+
+#### Implementation
+
+**Priority-based fallback:**
+```php
+// 1. Try Moodle username (LTI claim)
+$moodle_username = $claims->preferred_username ?? '';
+if (empty($moodle_username) && isset($claims->{'...claim/ext'})) {
+    $moodle_username = $claims->{'...claim/ext'}->user_username ?? '';
+}
+
+// Priority order with clear logging
+if (!empty($moodle_username)) {
+    $username = $moodle_username; // Preferred
+} elseif (!empty($given_name) && !empty($family_name)) {
+    $username = strtolower($given_name . '.' . $family_name); // Fallback
+} else {
+    $username = $lti_user_id; // Last resort
+}
+
+error_log('[PB-LTI RoleMapper] Moodle username: ' . ($moodle_username ?: 'NOT PROVIDED'));
+error_log('[PB-LTI RoleMapper] Using username: ' . $username);
+```
+
+**Files Modified:**
+- `plugin/Services/RoleMapper.php`
+
+**Pattern Established:** Priority-based selection with detailed logging at each decision point.
+
+**Unknown:** Whether Moodle sends `preferred_username` claim. Needs testing to verify.
+
+---
+
+### Comprehensive User Documentation
+
+**Date**: 2026-02-15  
+**Status**: ✅ Complete
+
+#### Documentation Created
+
+**1. `docs/NEW_FEATURES_2026.md` (350+ lines)**
+- Comprehensive guide to all 2026 features
+- Each feature includes: overview, how it works, setup, benefits, use cases
+- Covers: bidirectional logout, real usernames, grade routing, retroactive sync, H5P grading, Deep Linking, scale support
+
+**2. `docs/INSTRUCTOR_QUICK_REFERENCE.md` (220+ lines)**
+- Quick reference card for everyday instructor tasks
+- Step-by-step guides for common operations
+- Troubleshooting checklist
+- Best practices (do's and don'ts)
+
+**Documentation Structure Pattern:**
+```
+For Each Feature:
+1. What it does (user-friendly explanation)
+2. How it works (technical details)
+3. Setup required (configuration steps)
+4. User experience (what users see)
+5. Benefits (why it matters)
+6. Documentation links (related docs)
+```
+
+**Audience Segmentation:**
+- **Administrators**: NEW_FEATURES_2026.md, INSTALLATION.md
+- **Instructors**: INSTRUCTOR_QUICK_REFERENCE.md, H5P_RESULTS_GRADING.md
+- **Developers**: DEVELOPER_ONBOARDING.md, SESSION_MONITOR_TESTING.md
+
+**Decision:** Separate comprehensive guide from quick reference to serve different use cases and reduce cognitive load.
+
+---
+
+### Repository Rename
+
+**Date**: 2026-02-15  
+**Status**: ✅ Complete
+
+#### Change
+
+```
+Old: pressbooks-lti-platform
+New: qbnox-lti-platform
+```
+
+#### Rationale
+
+- Clearer organizational ownership (Qbnox)
+- Better branding consistency
+- Reduces confusion with official Pressbooks
+- Aligns with legal disclaimer
+
+#### Process
+
+1. User renamed on GitHub (manual)
+2. Updated local git remote: `git remote set-url origin ...`
+3. Updated documentation URLs (README, INSTALLATION, NEW_FEATURES)
+4. Committed and pushed
+5. GitHub automatically redirects old URLs
+
+**Files Modified:**
+- `README.md`
+- `docs/INSTALLATION.md`
+- `docs/NEW_FEATURES_2026.md`
+
+**Important:** Local directory paths stay same (`/root/pressbooks-lti-platform/`). Only repository URL changed.
+
+---
+
+### Legal Disclaimer
+
+**Date**: 2026-02-15  
+**Status**: ✅ Complete
+
+#### Requirement
+
+Clarify this is independent project, not affiliated with official Pressbooks.
+
+#### Implementation
+
+**Prominent Notice (Top of README):**
+```markdown
+> ⚠️ Important Notice
+> This is an independent, community-developed plugin created by Qbnox
+> and is not affiliated with, endorsed by, or officially supported by
+> Pressbooks.
+```
+
+**Detailed Section (Governance):**
+- "Relationship with Pressbooks" subsection
+- Clear independence statement
+- Trademark acknowledgment
+- Open-source integration rights
+- Link to official Pressbooks site
+
+**Language Characteristics:**
+- Factual, not apologetic
+- Professional and respectful
+- Legally appropriate
+- Protects both parties
+- Acknowledges trademarks properly
+
+**Files Modified:**
+- `README.md`
+
+**Pattern:** Two-level disclaimer (prominent + detailed) for visibility and legal protection.
+
+---
+
+## Key Patterns Established - 2026-02-15
+
+### 1. Per-User, Per-Post Meta Storage
+
+**Use Case:** Store data associated with specific user + specific content.
+
+**Pattern:**
+```php
+// Storing
+$meta_key = '_lti_data_type_user_' . $user_id;
+update_post_meta($post_id, $meta_key, $value);
+
+// Retrieving
+$meta_key = '_lti_data_type_user_' . $user_id;
+$value = get_post_meta($post_id, $meta_key, true);
+
+// Backward compatibility fallback
+if (empty($value)) {
+    $value = get_user_meta($user_id, '_lti_data_type', true);
+}
+```
+
+**Benefits:**
+- Scalable for multisite
+- Clear data ownership (belongs to chapter, not user)
+- Prevents overwriting when user accesses multiple chapters
+- Backward compatible
+
+**Applications:**
+- Chapter-specific lineitems
+- Per-user, per-chapter configurations
+- Any user+content relationship
+
+---
+
+### 2. Multisite URL Parsing
+
+**Use Case:** Extract post_id from URL in WordPress multisite.
+
+**Pattern:**
+```php
+private static function get_post_id_from_url($url) {
+    // For multisite, need to switch blog context
+    if (is_multisite()) {
+        $blog_id = get_blog_id_from_url(
+            parse_url($url, PHP_URL_HOST),
+            parse_url($url, PHP_URL_PATH)
+        );
+
+        if ($blog_id) {
+            switch_to_blog($blog_id);
+            $post_id = url_to_postid($url);
+            restore_current_blog();
+            
+            if ($post_id) {
+                error_log('[Component] Extracted post_id ' . $post_id . 
+                         ' from URL (blog ' . $blog_id . ')');
+                return $post_id;
+            }
+        }
+    }
+
+    // Fallback: single site or manual parsing
+    $post_id = url_to_postid($url);
+    
+    // Manual parsing fallback for Pressbooks URLs
+    if (!$post_id) {
+        if (preg_match('#/([^/]+)/(chapter|part|front-matter|back-matter)/([^/]+)/?$#', 
+                       parse_url($url, PHP_URL_PATH), $matches)) {
+            // Extract book and chapter slugs, query manually
+        }
+    }
+    
+    return $post_id;
+}
+```
+
+**Critical:** Always `restore_current_blog()` after `switch_to_blog()`.
+
+**Applications:**
+- Deep Linking URL processing
+- LaunchController target URL parsing
+- Any cross-blog URL resolution
+
+---
+
+### 3. JavaScript Session Monitoring
+
+**Use Case:** Monitor remote session status via JavaScript polling.
+
+**Pattern:**
+```javascript
+var failureCount = 0;
+var maxFailures = 2;
+var checkInterval = 30000; // 30 seconds
+
+function checkRemoteSession() {
+    fetch(remoteUrl + '/api/session', {
+        credentials: 'include', // Important: send cookies
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({...})
+    })
+    .then(response => {
+        if (response.ok) {
+            failureCount = 0; // Reset on success
+        } else if (response.status === 401 || response.status === 403) {
+            failureCount++;
+            if (failureCount >= maxFailures) {
+                // Session expired, take action
+                window.location.href = logoutUrl;
+            }
+        }
+    })
+    .catch(error => {
+        failureCount++;
+        // Handle network errors
+    });
+}
+
+// Multiple triggers for reliability
+setInterval(checkRemoteSession, checkInterval);
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) checkRemoteSession();
+});
+window.addEventListener('focus', checkRemoteSession);
+```
+
+**Key Points:**
+- Require multiple consecutive failures (tolerance for network issues)
+- Multiple check triggers (periodic, focus, visibility)
+- Use `credentials: 'include'` for cookies
+- CORS must be enabled on remote server
+
+**Applications:**
+- Bidirectional logout
+- License validation
+- External API health checks
+
+---
+
+### 4. Priority-Based Fallback with Logging
+
+**Use Case:** Select value from multiple sources with clear priority order.
+
+**Pattern:**
+```php
+// Check sources in priority order
+$first_choice = $claims->preferred_value ?? '';
+$second_choice = $claims->alternate_value ?? '';
+$fallback = $claims->guaranteed_value;
+
+// Log what's available
+error_log('[Component] First choice: ' . ($first_choice ?: 'NOT PROVIDED'));
+error_log('[Component] Second choice: ' . ($second_choice ?: 'NOT PROVIDED'));
+error_log('[Component] Fallback: ' . $fallback);
+
+// Select with priority
+if (!empty($first_choice)) {
+    $value = $first_choice;
+    $source = 'first_choice';
+} elseif (!empty($second_choice)) {
+    $value = $second_choice;
+    $source = 'second_choice';
+} else {
+    $value = $fallback;
+    $source = 'fallback';
+}
+
+// Log decision
+error_log('[Component] Using ' . $source . ': ' . $value);
+```
+
+**Benefits:**
+- Clear decision-making process
+- Easy troubleshooting from logs
+- Always has a value (guaranteed fallback)
+- Documented priority order
+
+**Applications:**
+- Username selection
+- Lineitem retrieval
+- Configuration value resolution
+- Any multi-source data
+
+---
+
+### 5. Documentation Structure
+
+**Use Case:** Comprehensive feature documentation for multiple audiences.
+
+**Pattern:**
+```markdown
+# Feature Name
+
+## What It Does
+User-friendly explanation of the feature (no technical jargon)
+
+## How It Works
+Technical explanation for developers/admins
+
+## Setup Required
+Step-by-step configuration instructions
+
+## User Experience
+What users see and do
+
+## Benefits
+Why this matters (business value)
+
+## Use Cases
+Real-world scenarios and examples
+
+## Troubleshooting
+Common issues and solutions
+
+## Related Documentation
+Links to other relevant docs
+```
+
+**Audience Segmentation:**
+- Overview docs: All audiences
+- Quick reference: End users (instructors/students)
+- Detailed guides: Administrators
+- Technical docs: Developers
+
+**Benefits:**
+- Consistent structure aids navigation
+- Progressive detail (overview → specifics)
+- Audience-appropriate content
+- Comprehensive coverage
+
+---
+
+### 6. Detailed Debug Logging
+
+**Use Case:** Troubleshoot production issues via logs.
+
+**Pattern:**
+```php
+// Log what you're doing
+error_log('[Component] Starting operation: ' . $description);
+
+// Log inputs (show what's NOT provided)
+error_log('[Component] Input A: ' . ($input_a ?: 'NOT PROVIDED'));
+error_log('[Component] Input B: ' . ($input_b ?: 'NOT PROVIDED'));
+
+// Log decision points
+error_log('[Component] Condition met: ' . ($condition ? 'YES' : 'NO'));
+
+// Log what was selected/decided
+error_log('[Component] Selected option: ' . $selected_option);
+
+// Log result with context
+error_log(sprintf(
+    '[Component] Result: %s (source: %s, method: %s)',
+    $result, $source, $method
+));
+```
+
+**Key Principles:**
+- Prefix with component name for easy grepping
+- Log NOT PROVIDED for missing values (not just present values)
+- Log decision reasoning, not just outcomes
+- Use structured logging (sprintf) for complex data
+- Include context (where value came from)
+
+**Benefits:**
+- Remote debugging without reproduction
+- Clear audit trail
+- Easy to grep/filter by component
+- Shows decision-making process
+
+---
+
+## Testing Status - 2026-02-15
+
+### ✅ Implemented and Deployed
+
+1. **Chapter-Specific Grade Routing**
+   - Code complete and deployed
+   - Needs fresh user testing
+   - Multisite URL parsing needs investigation
+
+2. **Bidirectional Logout**
+   - JavaScript monitoring deployed
+   - CORS script provided
+   - Requires user to enable CORS
+
+3. **Real Moodle Usernames**
+   - Code complete and deployed
+   - Logging added for verification
+   - Needs test launch to verify claims
+
+4. **User Documentation**
+   - NEW_FEATURES_2026.md complete
+   - INSTRUCTOR_QUICK_REFERENCE.md complete
+   - SESSION_MONITOR_TESTING.md complete
+
+5. **Repository Rename**
+   - GitHub renamed
+   - Local remote updated
+   - Documentation updated
+
+6. **Legal Disclaimer**
+   - README.md updated
+   - Prominent and detailed notices
+   - Professionally worded
+
+### ⏳ Awaiting Testing
+
+1. **Grade Routing Verification**
+   - User needs to launch fresh from Moodle
+   - Check if post_id extracted correctly
+   - Verify grades post to correct columns
+
+2. **CORS Setup**
+   - User needs to run: `bash scripts/enable-moodle-cors.sh`
+   - Verify session monitoring works
+   - Test auto-logout when Moodle logs out
+
+3. **Username Claims**
+   - Launch and check logs
+   - Verify Moodle sends username claim
+   - Confirm fallback works if not sent
+
+### 🚧 Known Issues
+
+1. **Multisite URL Parsing**
+   - `get_post_id_from_url()` returning null
+   - Needs investigation and possible alternative approach
+   - Critical for grade routing
+
+2. **CORS Not Enabled**
+   - Blocking bidirectional logout
+   - User action required
+   - Script provided for easy setup
+
+---
+
+**Last Updated:** 2026-02-15
+**Version:** v2.1.0 (tagged, not yet released on GitHub)
+**Next Steps:** User testing of deployed features
+

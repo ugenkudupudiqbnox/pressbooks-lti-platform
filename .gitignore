@@ -1,2 +1,5 @@
 .env
 lti-local-lab/.env
+plugin/vendor/
+*.backup
+*.suggested
