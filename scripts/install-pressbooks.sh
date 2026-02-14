@@ -27,6 +27,37 @@ if ! command -v wp &> /dev/null; then
   echo '✅ WP-CLI installed'
 fi
 
+# Install MySQL client if not present
+if ! command -v mysql &> /dev/null; then
+  echo '📥 Installing MySQL client...'
+  apt-get update -qq >/dev/null 2>&1
+  apt-get install -y -qq default-mysql-client >/dev/null 2>&1
+  echo '✅ MySQL client installed'
+fi
+
+# Wait for MySQL and create database if needed
+echo '🔧 Checking database...'
+DB_NAME=\${WORDPRESS_DB_NAME:-wordpress}
+DB_USER=\${WORDPRESS_DB_USER:-root}
+DB_PASS=\${WORDPRESS_DB_PASSWORD:-root}
+DB_HOST=\${WORDPRESS_DB_HOST:-mysql}
+
+# Wait for MySQL to be ready
+until mysql -h\$DB_HOST -u\$DB_USER -p\$DB_PASS -e 'SELECT 1' >/dev/null 2>&1; do
+  echo '⏳ Waiting for MySQL to be ready...'
+  sleep 3
+done
+echo '✅ MySQL is ready'
+
+# Create database if it doesn't exist
+if ! mysql -h\$DB_HOST -u\$DB_USER -p\$DB_PASS -e \"USE \$DB_NAME\" >/dev/null 2>&1; then
+  echo \"📦 Creating database '\$DB_NAME'...\"
+  mysql -h\$DB_HOST -u\$DB_USER -p\$DB_PASS -e \"CREATE DATABASE IF NOT EXISTS \$DB_NAME CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;\"
+  echo '✅ Database created'
+else
+  echo '✅ Database already exists'
+fi
+
 # Check if WordPress is already installed
 echo '🔧 Checking WordPress installation...'
 if wp core is-installed --allow-root >/dev/null 2>&1; then
