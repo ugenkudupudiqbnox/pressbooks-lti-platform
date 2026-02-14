@@ -11,6 +11,23 @@ if [ -z "$PB_CONTAINER" ]; then
   exit 1
 fi
 
+# Wait for MySQL container to be healthy
+echo "⏳ Waiting for MySQL to be healthy..."
+TIMEOUT=120
+ELAPSED=0
+until docker ps --filter "name=mysql" --format "{{.Status}}" | grep -q "healthy"; do
+  if [ $ELAPSED -ge $TIMEOUT ]; then
+    echo "❌ Timeout waiting for MySQL container to be healthy"
+    echo "📊 MySQL container status:"
+    docker ps --filter "name=mysql" --format "table {{.Names}}\t{{.Status}}"
+    exit 1
+  fi
+  echo "  ⏳ MySQL not healthy yet... (${ELAPSED}s/${TIMEOUT}s)"
+  sleep 5
+  ELAPSED=$((ELAPSED + 5))
+done
+echo "✅ MySQL container is healthy"
+
 echo "📚 Installing WordPress multisite + Pressbooks"
 
 docker exec "$PB_CONTAINER" bash -c "
