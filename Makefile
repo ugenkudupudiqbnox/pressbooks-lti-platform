@@ -13,7 +13,8 @@ install:
 	bash scripts/install-plugin.sh
 
 enable-lti:
-	bash scripts/moodle-register-lti.sh
+	bash scripts/register-lti-tool.sh
+	bash scripts/enable-email-sharing.sh
 
 seed:
 	bash scripts/seed-moodle.sh
