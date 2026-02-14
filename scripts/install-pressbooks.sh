@@ -106,35 +106,41 @@ else
 
   cd /var/www/html
 
-  # Create .env file
+  # Install wp-cli dotenv package for cleaner .env management
+  echo '📦 Installing wp-cli dotenv package...'
+  if ! wp package list 2>/dev/null | grep -q 'aaemnnosttv/wp-cli-dotenv-command'; then
+    wp package install aaemnnosttv/wp-cli-dotenv-command:^2.0 --allow-root
+  fi
+
+  # Create or update .env file using wp-cli dotenv
   echo '⚙️  Configuring .env...'
-  cat > .env << 'ENVEOF'
-DB_NAME=\${DB_NAME}
-DB_USER=\${DB_USER}
-DB_PASSWORD=\${DB_PASS}
-DB_HOST=\${DB_HOST}
+  if [ ! -f .env ]; then
+    if [ -f .env.example ]; then
+      wp dotenv init --template=.env.example --allow-root
+    else
+      wp dotenv init --allow-root
+    fi
+  fi
 
-WP_ENV=development
-WP_HOME=${PRESSBOOKS_URL}
-WP_SITEURL=\${WP_HOME}/wp
+  # Generate WordPress salts using wp-cli (much cleaner!)
+  echo '🔐 Generating WordPress salts...'
+  wp dotenv salts generate --allow-root
 
-# Generate salts at: https://roots.io/salts.html
-AUTH_KEY='generateme'
-SECURE_AUTH_KEY='generateme'
-LOGGED_IN_KEY='generateme'
-NONCE_KEY='generateme'
-AUTH_SALT='generateme'
-SECURE_AUTH_SALT='generateme'
-LOGGED_IN_SALT='generateme'
-NONCE_SALT='generateme'
+  # Set all required environment variables
+  wp dotenv set DB_NAME \"\${DB_NAME}\" --allow-root
+  wp dotenv set DB_USER \"\${DB_USER}\" --allow-root
+  wp dotenv set DB_PASSWORD \"\${DB_PASS}\" --allow-root
+  wp dotenv set DB_HOST \"\${DB_HOST}\" --allow-root
 
-# Multisite
-WP_ALLOW_MULTISITE=true
-MULTISITE=true
-SUBDOMAIN_INSTALL=false
-DOMAIN_CURRENT_SITE=${PRESSBOOKS_DOMAIN}
-PATH_CURRENT_SITE=/
-ENVEOF
+  wp dotenv set WP_ENV development --allow-root
+  wp dotenv set WP_HOME \"\${PRESSBOOKS_URL}\" --allow-root
+  wp dotenv set WP_SITEURL '\${WP_HOME}/wp' --allow-root
+
+  wp dotenv set WP_ALLOW_MULTISITE true --allow-root
+  wp dotenv set MULTISITE true --allow-root
+  wp dotenv set SUBDOMAIN_INSTALL false --allow-root
+  wp dotenv set DOMAIN_CURRENT_SITE \"\${PRESSBOOKS_DOMAIN}\" --allow-root
+  wp dotenv set PATH_CURRENT_SITE / --allow-root
 
   # Update Apache DocumentRoot
   echo '🔧 Configuring Apache DocumentRoot for Bedrock...'
