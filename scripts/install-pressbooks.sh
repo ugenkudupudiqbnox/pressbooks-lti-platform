@@ -93,13 +93,19 @@ if [ -f /var/www/html/web/wp-config.php ]; then
 else
   echo '🔧 Setting up Bedrock from scratch...'
 
-  # Backup existing WordPress if present
-  if [ -d /var/www/html.bak ]; then
-    rm -rf /var/www/html.bak
+  # Backup and remove existing WordPress directory
+  if [ -d /var/www/html ]; then
+    echo '📦 Backing up existing WordPress files...'
+    if [ -d /var/www/html.bak ]; then
+      rm -rf /var/www/html.bak
+    fi
+    # Copy to backup, then completely remove directory
+    cp -r /var/www/html /var/www/html.bak
+    rm -rf /var/www/html
+    echo '✅ Old directory removed'
   fi
-  mv /var/www/html /var/www/html.bak 2>/dev/null || true
 
-  # Create Pressbooks Bedrock project
+  # Create Pressbooks Bedrock project (will create /var/www/html)
   echo '📦 Creating Pressbooks Bedrock project (this may take 3-5 minutes)...'
   cd /var/www
   composer create-project pressbooks/pressbooksoss-bedrock html --no-interaction --quiet
