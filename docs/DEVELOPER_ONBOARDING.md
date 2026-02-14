@@ -65,7 +65,97 @@ pressbooks-lti-platform/
 
 ---
 
-## 4. One-Command Local Setup (Recommended)
+## 4. Environment Configuration (CI vs Production)
+
+### Overview
+
+The Docker setup supports **different URL configurations** for different environments:
+
+| Environment | URLs | Configuration |
+|------------|------|---------------|
+| **CI** (GitHub Actions) | `http://localhost:8081` | Default (no .env file) |
+| **Local Development** | `http://localhost:8081` | Default (no .env file) |
+| **Production** | `https://pb.lti.qbnox.com` | `.env` file required |
+
+### How It Works
+
+**docker-compose.yml uses environment variables with defaults:**
+
+```yaml
+environment:
+  WP_HOME: ${PRESSBOOKS_URL:-http://localhost:8081}
+  DOMAIN_CURRENT_SITE: ${PRESSBOOKS_DOMAIN:-localhost}
+```
+
+**Behavior:**
+- ✅ No `.env` file → Uses `localhost` (perfect for CI and local dev)
+- ✅ With `.env` file → Uses production URLs
+
+### Production Setup
+
+**1. Create .env file:**
+
+```bash
+cd lti-local-lab
+cp .env.production .env
+```
+
+**2. Edit .env with your domains:**
+
+```bash
+# Production environment variables
+PRESSBOOKS_URL=https://pb.lti.qbnox.com
+PRESSBOOKS_DOMAIN=pb.lti.qbnox.com
+
+# Moodle URLs (if needed)
+MOODLE_URL=https://moodle.lti.qbnox.com
+MOODLE_DOMAIN=moodle.lti.qbnox.com
+```
+
+**3. Restart containers:**
+
+```bash
+docker-compose down
+docker-compose up -d
+```
+
+### Local Development
+
+**No configuration needed!** Just run:
+
+```bash
+make up
+```
+
+The system will automatically use `http://localhost:8081` for Pressbooks.
+
+### CI (GitHub Actions)
+
+**No configuration needed!** CI automatically uses localhost defaults because there's no `.env` file in the repository (it's gitignored).
+
+### Verifying Configuration
+
+**Check what URLs your containers are using:**
+
+```bash
+docker exec pressbooks env | grep -E "WP_HOME|DOMAIN_CURRENT_SITE"
+```
+
+**Expected output (production):**
+```
+WP_HOME=https://pb.lti.qbnox.com
+DOMAIN_CURRENT_SITE=pb.lti.qbnox.com
+```
+
+**Expected output (local/CI):**
+```
+WP_HOME=http://localhost:8081
+DOMAIN_CURRENT_SITE=localhost
+```
+
+---
+
+## 5. One-Command Local Setup (Recommended)
 
 From the repository root:
 
@@ -88,7 +178,7 @@ This will:
 
 ---
 
-## 5. Manual Steps (Required Once)
+## 6. Manual Steps (Required Once)
 
 Some steps **must remain manual** to reflect real production behavior.
 
@@ -110,7 +200,7 @@ These steps mirror real institutional deployment.
 
 ---
 
-## 6. Common Make Commands
+## 7. Common Make Commands
 
 | Command           | What it does                |
 | ----------------- | --------------------------- |
@@ -125,7 +215,7 @@ These steps mirror real institutional deployment.
 
 ---
 
-## 7. Development Workflow
+## 8. Development Workflow
 
 ### Typical flow
 
@@ -149,7 +239,7 @@ These steps mirror real institutional deployment.
 
 ---
 
-## 8. Testing Strategy
+## 9. Testing Strategy
 
 ### Automated
 
@@ -172,7 +262,7 @@ docs/testing/PRESSBOOKS_MOODLE_TEST_CHECKLIST.md
 
 ---
 
-## 9. Security Expectations (Read Carefully)
+## 10. Security Expectations (Read Carefully)
 
 * ❌ Never log secrets
 * ❌ Never hardcode client secrets
@@ -188,7 +278,7 @@ If you find a vulnerability:
 
 ---
 
-## 10. CI & Pull Requests
+## 11. CI & Pull Requests
 
 ### CI does:
 
@@ -204,7 +294,7 @@ If you find a vulnerability:
 
 ---
 
-## 11. Troubleshooting
+## 12. Troubleshooting
 
 ### LTI launch fails
 
@@ -225,7 +315,7 @@ If you find a vulnerability:
 
 ---
 
-## 12. Philosophy (Why this matters)
+## 13. Philosophy (Why this matters)
 
 This project exists to give universities:
 
@@ -238,7 +328,7 @@ Treat this as **critical infrastructure**, not a plugin experiment.
 
 ---
 
-## 13. Getting Help
+## 14. Getting Help
 
 * Read docs first
 * Check audit logs
