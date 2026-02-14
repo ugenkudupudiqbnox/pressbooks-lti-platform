@@ -41,9 +41,6 @@ retry 15 $DC exec -T "$DB_CONTAINER" mysqladmin ping -h localhost --silent
 echo "⏳ Waiting for WordPress..."
 retry 15 $DC exec -T "$WP_CONTAINER" wp --info >/dev/null
 
-echo "🔐 Generating WordPress salts..."
-retry 5 $DC exec -T "$WP_CONTAINER" wp config shuffle-salts --allow-root || true
-
 echo "📦 Installing WordPress Multisite..."
 if ! $DC exec -T "$WP_CONTAINER" wp core is-installed --allow-root >/dev/null 2>&1; then
   retry 5 $DC exec -T "$WP_CONTAINER" wp core multisite-install \
