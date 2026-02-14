@@ -13,7 +13,16 @@ err()  { echo -e "❌ $*" >&2; }
 # Defaults (CI-safe)
 #############################################
 DB_CONTAINER="${DB_CONTAINER:-mysql}"
-WP_CONTAINER="${WP_CONTAINER:-pressbooks}"
+log "Detecting WordPress service..."
+WP_CONTAINER=$($DC ps --services | grep -E 'pressbooks|wordpress' | head -n1)
+
+if [ -z "$WP_CONTAINER" ]; then
+  err "Could not detect WordPress service name"
+  $DC ps
+  exit 1
+fi
+
+ok "Detected WordPress service: $WP_CONTAINER"
 
 DB_NAME="${DB_NAME:-pressbooks}"
 DB_USER="${DB_USER:-root}"
