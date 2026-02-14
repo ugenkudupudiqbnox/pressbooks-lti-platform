@@ -13,11 +13,15 @@ services:
 
   mysql:
     image: mysql:8.0
+    container_name: mysql
+    restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password
     environment:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: moodle
     volumes:
       - mysql-data:/var/lib/mysql
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-proot"]
       interval: 5s
@@ -28,6 +32,8 @@ services:
 
   moodle:
     image: php:8.1-apache
+    container_name: moodle
+    restart: unless-stopped
     depends_on:
       mysql:
         condition: service_healthy
@@ -53,8 +59,9 @@ services:
   pressbooks:
     build:
       context: ../docker/pressbooks
-      dockerfile: docker/pressbooks/Dockerfile
+      dockerfile: Dockerfile
     container_name: pressbooks
+    restart: unless-stopped
     depends_on:
       mysql:
         condition: service_healthy
@@ -63,13 +70,15 @@ services:
       DB_USER: root
       DB_PASSWORD: root
       DB_HOST: mysql
-      WP_HOME: http://localhost:8081
-      DOMAIN_CURRENT_SITE: localhost
+      WP_HOME: https://pb.lti.qbnox.com
+      DOMAIN_CURRENT_SITE: pb.lti.qbnox.com
       WP_ADMIN_USER: admin
       WP_ADMIN_PASSWORD: admin
       WP_ADMIN_EMAIL: admin@example.com
     volumes:
       - pressbooks-data:/var/www/pressbooks
+      # Plugin volume mount for hot-reload during development
+      - ../plugin:/var/www/pressbooks/web/app/plugins/pressbooks-lti-platform
     ports:
       - "8081:80"
     networks:

@@ -5,7 +5,7 @@ APP_ROOT="/var/www/pressbooks"
 WP_PATH="${APP_ROOT}/web/wp"
 
 # Wait for DB
-until mysqladmin ping -h"$DB_HOST" --silent; do
+until mysqladmin ping -h"$DB_HOST" --skip-ssl --silent 2>/dev/null; do
   echo "Waiting for MySQL..."
   sleep 3
 done
@@ -28,6 +28,7 @@ if [ ! -f .env ]; then
   wp dotenv set MULTISITE "true" --allow-root
   wp dotenv set SUBDOMAIN_INSTALL "false" --allow-root
   wp dotenv set DOMAIN_CURRENT_SITE "$DOMAIN_CURRENT_SITE" --allow-root
+  wp dotenv set WP_ENV "development" --allow-root
 fi
 
 # Install multisite if needed
@@ -46,5 +47,23 @@ fi
 
 # Network activate Pressbooks
 wp plugin activate pressbooks --network --path="$WP_PATH" --allow-root || true
+
+# Network-enable all Pressbooks themes
+echo "Enabling Pressbooks themes network-wide..."
+for theme in pressbooks-aldine pressbooks-book pressbooks-clarke pressbooks-donham pressbooks-jacobs; do
+  wp theme enable "$theme" --network --url="$WP_HOME" --path="$WP_PATH" --allow-root 2>/dev/null || true
+done
+
+# Install LTI plugin Composer dependencies
+LTI_PLUGIN_PATH="${APP_ROOT}/web/app/plugins/pressbooks-lti-platform"
+if [ -d "$LTI_PLUGIN_PATH" ] && [ -f "$LTI_PLUGIN_PATH/composer.json" ]; then
+  if [ ! -d "$LTI_PLUGIN_PATH/vendor" ]; then
+    echo "Installing LTI plugin dependencies..."
+    cd "$LTI_PLUGIN_PATH"
+    composer install --no-dev --optimize-autoloader --no-interaction 2>&1 | grep -v "dubious ownership" || true
+    cd "$APP_ROOT"
+    echo "✓ LTI plugin dependencies installed"
+  fi
+fi
 
 exec "$@"
