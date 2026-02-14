@@ -205,26 +205,26 @@ fi
 
 # Configure .htaccess for Bedrock multisite
 echo '🔧 Configuring .htaccess for Bedrock multisite...'
-cat > /var/www/html/web/.htaccess << 'HTACCESS_EOF'
+cat > /var/www/html/web/.htaccess << 'EOF'
 # BEGIN WordPress Multisite
 <IfModule mod_rewrite.c>
 RewriteEngine On
 RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
 RewriteBase /
-RewriteRule ^index\\.php\$ - [L]
+RewriteRule ^index\.php$ - [L]
 
 # add a trailing slash to /wp-admin
-RewriteRule ^([_0-9a-zA-Z-]+/)?wp-admin\$ \$1wp-admin/ [R=301,L]
+RewriteRule ^([_0-9a-zA-Z-]+/)?wp-admin$ $1wp-admin/ [R=301,L]
 
 RewriteCond %{REQUEST_FILENAME} -f [OR]
 RewriteCond %{REQUEST_FILENAME} -d
 RewriteRule ^ - [L]
-RewriteRule ^([_0-9a-zA-Z-]+/)?(wp-(content|admin|includes).*) wp/\$2 [L]
-RewriteRule ^([_0-9a-zA-Z-]+/)?(.*.php)\$ wp/\$2 [L]
+RewriteRule ^([_0-9a-zA-Z-]+/)?(wp-(content|admin|includes).*) wp/$2 [L]
+RewriteRule ^([_0-9a-zA-Z-]+/)?(.*.php)$ wp/$2 [L]
 RewriteRule . index.php [L]
 </IfModule>
 # END WordPress Multisite
-HTACCESS_EOF
+EOF
 
 echo '✅ .htaccess configured'
 
