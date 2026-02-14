@@ -23,6 +23,7 @@ require_once PB_LTI_PATH.'Services/H5PActivityDetector.php';
 require_once PB_LTI_PATH.'Services/H5PResultsManager.php';
 require_once PB_LTI_PATH.'Services/H5PGradeSyncEnhanced.php';
 require_once PB_LTI_PATH.'Services/LogoutLinkService.php';
+require_once PB_LTI_PATH.'Services/SessionMonitorService.php';
 
 // Load all Controllers
 require_once PB_LTI_PATH.'Controllers/LoginController.php';
@@ -56,3 +57,6 @@ add_action('init', ['PB_LTI\Controllers\LogoutController', 'check_logout_redirec
 
 // Initialize logout link service (adds "Return to LMS" links)
 add_action('init', ['PB_LTI\Services\LogoutLinkService', 'init']);
+
+// Initialize session monitor (detects when LMS session expires)
+add_action('init', ['PB_LTI\Services\SessionMonitorService', 'init']);

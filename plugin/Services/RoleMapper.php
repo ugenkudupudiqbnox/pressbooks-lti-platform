@@ -27,8 +27,32 @@ class RoleMapper {
             $family_name = $claims->family_name ?? '';
             $full_name = $claims->name ?? trim($given_name . ' ' . $family_name);
 
-            // Create username from name or fall back to LTI user ID
-            if (!empty($given_name) && !empty($family_name)) {
+            // Extract Moodle username if available
+            // LTI 1.3 sends Moodle username in preferred_username claim
+            $moodle_username = $claims->preferred_username ?? '';
+
+            // Also check custom Moodle extension claim
+            if (empty($moodle_username) && isset($claims->{'https://purl.imsglobal.org/spec/lti/claim/ext'})) {
+                $ext = $claims->{'https://purl.imsglobal.org/spec/lti/claim/ext'};
+                $moodle_username = $ext->user_username ?? '';
+            }
+
+            // Debug logging
+            error_log('[PB-LTI RoleMapper] User creation - LTI ID: ' . $lti_user_id);
+            error_log('[PB-LTI RoleMapper] Moodle username: ' . ($moodle_username ?: 'NOT PROVIDED'));
+            error_log('[PB-LTI RoleMapper] Email: ' . $email);
+            error_log('[PB-LTI RoleMapper] Given name: ' . ($given_name ?: 'NOT PROVIDED'));
+            error_log('[PB-LTI RoleMapper] Family name: ' . ($family_name ?: 'NOT PROVIDED'));
+            error_log('[PB-LTI RoleMapper] Full name: ' . ($full_name ?: 'NOT PROVIDED'));
+
+            // Create username - priority order:
+            // 1. Use Moodle username directly if available
+            // 2. Fall back to firstname.lastname format
+            // 3. Fall back to LTI user ID
+            if (!empty($moodle_username)) {
+                // Use Moodle's actual username
+                $username = $moodle_username;
+            } elseif (!empty($given_name) && !empty($family_name)) {
                 // Use firstname.lastname format
                 $username = strtolower($given_name . '.' . $family_name);
             } else {
