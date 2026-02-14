@@ -30,7 +30,9 @@ services:
       - lti-net
 
   moodle:
-    image: php:8.1-apache
+    build:
+      context: ../docker/moodle
+      dockerfile: Dockerfile
     container_name: moodle
     restart: unless-stopped
     depends_on:
