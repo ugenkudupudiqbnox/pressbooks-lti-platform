@@ -42,10 +42,30 @@ DB_USER=\${WORDPRESS_DB_USER:-root}
 DB_PASS=\${WORDPRESS_DB_PASSWORD:-root}
 DB_HOST=\${WORDPRESS_DB_HOST:-mysql}
 
-# Wait for MySQL to be ready
+echo \"📊 Database config: \$DB_USER@\$DB_HOST/\$DB_NAME\"
+
+# Check if MySQL host is reachable
+echo '🔍 Checking MySQL connectivity...'
+if ! ping -c 1 \$DB_HOST >/dev/null 2>&1 && ! nc -z \$DB_HOST 3306 >/dev/null 2>&1; then
+  echo \"⚠️  Warning: Cannot reach MySQL host '\$DB_HOST' - but will keep trying...\"
+fi
+
+# Wait for MySQL to be ready (max 2 minutes)
+TIMEOUT=120
+ELAPSED=0
 until mysql -h\$DB_HOST -u\$DB_USER -p\$DB_PASS -e 'SELECT 1' >/dev/null 2>&1; do
-  echo '⏳ Waiting for MySQL to be ready...'
-  sleep 3
+  if [ \$ELAPSED -ge \$TIMEOUT ]; then
+    echo '❌ Timeout waiting for MySQL to be ready'
+    echo '🔍 Troubleshooting:'
+    echo \"  - Host: \$DB_HOST\"
+    echo \"  - User: \$DB_USER\"
+    echo \"  - Testing connection...\"
+    mysql -h\$DB_HOST -u\$DB_USER -p\$DB_PASS -e 'SELECT 1' 2>&1 || true
+    exit 1
+  fi
+  echo \"  ⏳ Waiting for MySQL to be ready... (\${ELAPSED}s/\${TIMEOUT}s)\"
+  sleep 5
+  ELAPSED=\$((ELAPSED + 5))
 done
 echo '✅ MySQL is ready'
 
