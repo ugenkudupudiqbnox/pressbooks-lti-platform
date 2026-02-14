@@ -52,7 +52,7 @@ services:
 
   pressbooks:
     build:
-      context: ..
+      context: ../docker/pressbooks
       dockerfile: docker/pressbooks/Dockerfile
     container_name: pressbooks
     depends_on:
