@@ -610,6 +610,14 @@ exit;
 - Tool `lti_contentitem` field must be set to `1`
 - Activities using Deep Linking should have empty `toolurl` initially
 
+**Moodle Tool URL Configuration:**
+- Moodle's `lti_get_type_config()` uses `UNION ALL` to merge config from two sources:
+  - Config from `lti_types_config` table
+  - **Automatically adds** `toolurl` from `baseurl` field in `lti_types` table
+- ❌ **Do NOT** create a `toolurl` entry in `lti_types_config` (causes duplicates)
+- ✅ **Set** the `baseurl` field in `lti_types` table instead
+- This prevents "Duplicate value 'toolurl' found in column 'name'" debugging warning
+
 **RSA Key Management:**
 - Key pair stored in `wp_lti_keys` table
 - Kid: `pb-lti-2024` (used in JWT header and JWKS)

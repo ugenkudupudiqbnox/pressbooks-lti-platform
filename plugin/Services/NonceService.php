@@ -4,7 +4,7 @@ namespace PB_LTI\Services;
 class NonceService {
     public static function consume(string $nonce) {
         global $wpdb;
-        $table = $wpdb->prefix . 'pb_lti_nonces';
+        $table = $wpdb->prefix . 'lti_nonces';
 
         if ($wpdb->get_var($wpdb->prepare("SELECT nonce FROM $table WHERE nonce=%s", $nonce))) {
             throw new \Exception('Replay detected');
