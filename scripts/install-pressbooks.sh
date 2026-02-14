@@ -18,6 +18,15 @@ set -e
 
 cd /var/www/html
 
+# Install WP-CLI if not present
+if ! command -v wp &> /dev/null; then
+  echo '📥 Installing WP-CLI...'
+  curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
+  chmod +x wp-cli.phar
+  mv wp-cli.phar /usr/local/bin/wp
+  echo '✅ WP-CLI installed'
+fi
+
 # Check if WordPress is already installed
 echo '🔧 Checking WordPress installation...'
 if wp core is-installed --allow-root >/dev/null 2>&1; then
