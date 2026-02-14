@@ -68,16 +68,17 @@ if ! ping -c 1 \$DB_HOST >/dev/null 2>&1 && ! nc -z \$DB_HOST 3306 >/dev/null 2>
 fi
 
 # Wait for MySQL to be ready (max 2 minutes)
+# Note: Using --ssl-mode=DISABLED for development environment (self-signed certs)
 TIMEOUT=120
 ELAPSED=0
-until mysql -h\$DB_HOST -u\$DB_USER -p\$DB_PASS -e 'SELECT 1' >/dev/null 2>&1; do
+until mysql -h\$DB_HOST -u\$DB_USER -p\$DB_PASS --ssl-mode=DISABLED -e 'SELECT 1' >/dev/null 2>&1; do
   if [ \$ELAPSED -ge \$TIMEOUT ]; then
     echo '❌ Timeout waiting for MySQL to be ready'
     echo '🔍 Troubleshooting:'
     echo \"  - Host: \$DB_HOST\"
     echo \"  - User: \$DB_USER\"
     echo \"  - Testing connection...\"
-    mysql -h\$DB_HOST -u\$DB_USER -p\$DB_PASS -e 'SELECT 1' 2>&1 || true
+    mysql -h\$DB_HOST -u\$DB_USER -p\$DB_PASS --ssl-mode=DISABLED -e 'SELECT 1' 2>&1 || true
     exit 1
   fi
   echo \"  ⏳ Waiting for MySQL to be ready... (\${ELAPSED}s/\${TIMEOUT}s)\"
@@ -87,9 +88,9 @@ done
 echo '✅ MySQL is ready'
 
 # Create database if it doesn't exist
-if ! mysql -h\$DB_HOST -u\$DB_USER -p\$DB_PASS -e \"USE \$DB_NAME\" >/dev/null 2>&1; then
+if ! mysql -h\$DB_HOST -u\$DB_USER -p\$DB_PASS --ssl-mode=DISABLED -e \"USE \$DB_NAME\" >/dev/null 2>&1; then
   echo \"📦 Creating database '\$DB_NAME'...\"
-  mysql -h\$DB_HOST -u\$DB_USER -p\$DB_PASS -e \"CREATE DATABASE IF NOT EXISTS \$DB_NAME CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;\"
+  mysql -h\$DB_HOST -u\$DB_USER -p\$DB_PASS --ssl-mode=DISABLED -e \"CREATE DATABASE IF NOT EXISTS \$DB_NAME CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;\"
   echo '✅ Database created'
 else
   echo '✅ Database already exists'
