@@ -7,6 +7,9 @@
 ![Pressbooks](https://img.shields.io/badge/Pressbooks-Bedrock-orange)
 ![Moodle](https://img.shields.io/badge/Tested%20with-Moodle-success)
 
+> **⚠️ Important Notice**
+> This is an **independent, community-developed plugin** created by Qbnox and is **not affiliated with, endorsed by, or officially supported by Pressbooks**. While this plugin integrates with Pressbooks software, it is developed and maintained independently. For official Pressbooks support and services, please visit [pressbooks.com](https://pressbooks.com).
+
 An **open, production‑grade LTI 1.3 + LTI Advantage platform** for Pressbooks,
 built for **universities, OER initiatives, and public institutions**.
 
@@ -52,9 +55,25 @@ Designed for **long‑term institutional ownership**, not short‑term demos.
 
 ## Governance & Licensing
 
-- **License:** MIT
+- **License:** MIT (Open Source)
 - **Model:** Open foundation with optional commercial support
+- **Development:** Independent community project by Qbnox
 - **Roadmap:** See ROADMAP.md
+
+### Relationship with Pressbooks
+
+This plugin is an **independent integration** developed by Qbnox to enable LTI 1.3 connectivity between Learning Management Systems and Pressbooks installations.
+
+**Key Points:**
+- ✅ **Open Source:** Freely available under MIT license
+- ✅ **Standards-Compliant:** Follows IMS Global LTI 1.3 specifications
+- ✅ **Compatible:** Works with Pressbooks Bedrock installations
+- ❌ **Not Official:** Not developed, endorsed, or supported by Pressbooks
+- ℹ️ **Independent:** Maintained by Qbnox and the community
+
+**Trademarks:** "Pressbooks" is a trademark of Pressbooks. This project is not affiliated with Pressbooks and makes no claim to their trademarks. We integrate with their open-source software as permitted under its license terms.
+
+For official Pressbooks products and support, visit [pressbooks.com](https://pressbooks.com).
 
 ---
 
