@@ -77,12 +77,6 @@ For official Pressbooks products and support, visit [pressbooks.com](https://pre
 
 ---
 
-## Status
-
-🚀 Production‑ready (v0.8+)
-
----
-
 ## Getting Started
 
 See:
