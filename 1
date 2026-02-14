@@ -76,6 +76,13 @@ DC="$DC -f $COMPOSE_FILE_PATH"
 log "Starting Docker containers..."
 $DC up -d --build
 
+log "Waiting 10s for containers to initialize..."
+sleep 10
+
+#############################################
+# Ensure containers are started
+#############################################
+
 #############################################
 # Wait for WordPress container to be running
 #############################################
