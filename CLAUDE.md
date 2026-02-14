@@ -929,3 +929,465 @@ docker exec pressbooks tail -f /var/log/apache2/error.log
 - IMS Global LTI Advantage: https://www.imsglobal.org/spec/lti/v1p3/
 - Deep Linking 2.0: https://www.imsglobal.org/spec/lti-dl/v2p0
 - Assignment & Grade Services: https://www.imsglobal.org/spec/lti-ags/v2p0
+
+---
+
+## Recent Decisions - 2026-02-14
+
+### H5P to Moodle Grade Sync (COMPLETED - AGS Implementation)
+
+**Date**: 2026-02-14
+**Status**: ✅ Fully implemented and working
+
+#### Critical Fixes Applied
+
+**1. AGS Scores Endpoint URL Format**
+- **Issue**: Moodle returned `400 No handler found` when posting scores
+- **Root Cause**: Appending `/scores` after query string instead of before
+- **Solution**: Use `parse_url()` to properly construct URL
+```php
+// WRONG: .../lineitem?type_id=1/scores
+// CORRECT: .../lineitem/scores?type_id=1
+
+$url_parts = parse_url($lineitem_url);
+$scores_url = $url_parts['path'] . '/scores';
+if (isset($url_parts['query'])) $scores_url .= '?' . $url_parts['query'];
+```
+
+**2. Score Format (Raw vs Percentage)**
+- **Issue**: Moodle rejected percentage-normalized scores
+- **Root Cause**: Sending `scoreGiven: 100, scoreMaximum: 100` for perfect H5P score
+- **Moodle Expectation**: Raw activity scores (e.g., `5/5` not `100/100`)
+- **Solution**: Changed from `$percentage, 100` to `$score, $max_score`
+```php
+// WRONG - Percentage normalization
+AGSClient::post_score($platform, $lineitem_url, $user_id, 100, 100, ...);
+
+// CORRECT - Raw H5P score
+AGSClient::post_score($platform, $lineitem_url, $user_id, 5, 5, ...);
+```
+
+**3. LTI User ID vs WordPress User ID**
+- **Issue**: Moodle returned `400 Incorrect score received` even with correct score format
+- **Root Cause**: Using WordPress user ID (125) instead of LTI user ID
+- **Moodle Expectation**: User identifier from LTI launch JWT (`sub` claim)
+- **Solution**: Store `sub` claim during launch, use in grade posting
+```php
+// LaunchController.php - Store LTI user ID during launch
+update_user_meta($user_id, '_lti_user_id', $claims->sub);
+
+// H5PGradeSync.php - Use LTI user ID for grade posting
+$lti_user_id = get_user_meta($user_id, '_lti_user_id', true);
+AGSClient::post_score($platform, $lineitem_url, $lti_user_id, $score, $max_score, ...);
+```
+
+#### Patterns Established
+
+**AGS Score Posting Pattern:**
+```php
+// 1. Always fetch lineitem details first (for scale detection)
+$lineitem = AGSClient::fetch_lineitem($platform, $lineitem_url);
+
+// 2. Detect grading type (points vs scale)
+$scale_type = ScaleMapper::detect_scale($lineitem);
+
+// 3. Map score if scale, otherwise use raw score
+if ($scale_type && $scale_type !== 'unknown') {
+    $mapped = ScaleMapper::map_to_scale($percentage, $scale_type);
+    $final_score = $mapped['score'];
+    $final_max = $mapped['max'];
+} else {
+    $final_score = $score;  // Raw H5P score
+    $final_max = $max_score;
+}
+
+// 4. Post grade with LTI user ID
+AGSClient::post_score($platform, $lineitem_url, $lti_user_id, 
+                      $final_score, $final_max, 'Completed', 'FullyGraded');
+```
+
+**OAuth2 Scope for AGS:**
+```php
+// Must include both lineitem.readonly (for fetching) and score (for posting)
+'scope' => 'https://purl.imsglobal.org/spec/lti-ags/scope/lineitem.readonly ' .
+           'https://purl.imsglobal.org/spec/lti-ags/scope/score'
+```
+
+### Scale Grading Support (NEW FEATURE - 2026-02-14)
+
+**Date**: 2026-02-14
+**Status**: ✅ Implemented (awaiting testing with scale-graded activities)
+
+#### Architecture
+
+**ScaleMapper Service** (`plugin/Services/ScaleMapper.php`)
+- Detects scale type from lineitem `scoreMaximum`
+- Maps H5P percentage scores to Moodle scale values
+- Extensible design for adding additional scales
+
+**Supported Scales:**
+
+1. **Default Competence Scale** (2 items: 0-1)
+```php
+$scales['competence'] = [
+    'items' => ['Not yet competent', 'Competent'],
+    'max' => 1,
+    'thresholds' => [
+        0.5 => 0,  // < 50% = Not yet competent
+        1.0 => 1,  // >= 50% = Competent
+    ]
+];
+```
+
+2. **Separate and Connected Ways of Knowing** (3 items: 0-2)
+```php
+$scales['ways_of_knowing'] = [
+    'items' => ['Mostly separate knowing', 'Separate and connected', 'Mostly connected knowing'],
+    'max' => 2,
+    'thresholds' => [
+        0.4 => 0,  // < 40% = Mostly separate knowing
+        0.7 => 1,  // 40-70% = Separate and connected
+        1.0 => 2,  // >= 70% = Mostly connected knowing
+    ]
+];
+```
+
+**Scale Detection Logic:**
+```php
+public static function detect_scale($lineitem) {
+    $max = (float)$lineitem['scoreMaximum'];
+    
+    if ($max == 1) return 'competence';
+    if ($max == 2) return 'ways_of_knowing';
+    if ($max < 10) return 'unknown';  // Unknown scale
+    
+    return null;  // Points-based grading
+}
+```
+
+**Integration with H5PGradeSync:**
+- Automatically fetches lineitem details before posting grade
+- Detects scale type from scoreMaximum
+- Maps H5P percentage to scale value if scale detected
+- Falls back to point grading for unknown/null scales
+
+**Example Flow:**
+```
+H5P: Student scores 4/5 (80%)
+→ Fetch lineitem → scoreMaximum = 2 → Detect "ways_of_knowing" scale
+→ Map 80% → Scale value 2 ("Mostly connected knowing")
+→ Post: scoreGiven=2, scoreMaximum=2
+→ Moodle displays: "Mostly connected knowing" in gradebook
+```
+
+#### Key Decisions
+
+**Why these specific scales?**
+- User explicitly requested "Default competence scale" and "Separate and Connected ways of knowing"
+- These are common Moodle default scales for competency-based assessment
+- Mapping thresholds chosen based on pedagogical best practices
+
+**Why detect from scoreMaximum?**
+- Reliable indicator of scale vs points (scales have small max values)
+- No additional API calls needed beyond lineitem fetch
+- Works across different Moodle versions
+
+**Why percentage-based thresholds?**
+- H5P provides percentage completion (score/max_score * 100)
+- Intuitive for instructors (e.g., "50% = competent")
+- Configurable in code if thresholds need adjustment
+
+#### Adding New Scales
+
+To support additional scales, add to `ScaleMapper::$scales` array:
+```php
+'my_custom_scale' => [
+    'items' => ['Item 1', 'Item 2', 'Item 3', 'Item 4'],
+    'max' => 3,  // 4 items = max value 3 (0-indexed)
+    'thresholds' => [
+        0.25 => 0,  // 0-25%
+        0.50 => 1,  // 25-50%
+        0.75 => 2,  // 50-75%
+        1.00 => 3,  // 75-100%
+    ]
+]
+```
+
+Then update `detect_scale()` to match the scoreMaximum:
+```php
+if ($max == 3) return 'my_custom_scale';
+```
+
+### Deep Linking Chapter Selection Modal (NEW FEATURE - 2026-02-14)
+
+**Date**: 2026-02-14
+**Status**: ✅ Implemented (awaiting testing in Moodle)
+
+#### User Requirement
+
+When instructor selects whole book in Deep Linking content picker:
+- Show confirmation modal with all chapters listed
+- Provide checkboxes to include/exclude specific chapters
+- Allow selective chapter addition instead of all-or-nothing
+
+#### Implementation
+
+**UI Components** (`plugin/views/deep-link-picker.php`):
+
+1. **Confirmation Modal**
+   - Modal overlay with backdrop
+   - Scrollable chapter list (max-height: 80vh)
+   - Color-coded badges: Front (blue), Chapter (green), Back (yellow)
+
+2. **Bulk Actions**
+   - "Select All" button - Check all checkboxes
+   - "Deselect All" button - Uncheck all checkboxes
+   - Live counter: "X of Y selected"
+
+3. **JavaScript Functions**
+```javascript
+// Show modal and fetch chapters via AJAX
+showChapterSelectionModal(bookId)
+
+// Populate checkboxes from book structure
+populateChapterCheckboxes(structure)
+
+// Bulk actions
+selectAllChapters()
+deselectAllChapters()
+
+// Update live counter
+updateSelectedCount()
+
+// Submit selected chapter IDs (comma-separated)
+confirmChapterSelection()
+```
+
+**Backend Processing** (`plugin/Controllers/DeepLinkController.php`):
+
+```php
+// New parameter: selected_chapter_ids (comma-separated)
+$selected_chapter_ids = $request->get_param('selected_chapter_ids');
+
+if (!empty($selected_chapter_ids)) {
+    // Specific chapters selected
+    $chapter_ids = array_map('intval', explode(',', $selected_chapter_ids));
+    foreach ($chapter_ids as $chapter_id) {
+        $content_items[] = ContentService::get_content_item($book_id, $chapter_id);
+    }
+} elseif (empty($content_id)) {
+    // Whole book (all chapters) - existing behavior
+    // ...
+}
+```
+
+**Deep Linking Response:**
+- Returns array of content items (one per selected chapter)
+- Moodle creates one LTI activity per content item
+- Activities created in chapter order
+
+#### User Flow
+
+1. Instructor clicks "Add activity" → External Tool (Pressbooks)
+2. Clicks "Select content" → Opens content picker
+3. Clicks on book card (doesn't select specific chapter)
+4. Clicks "Select This Content"
+5. **NEW**: Modal opens with all chapters (checkboxes checked)
+6. Instructor unchecks unwanted chapters (e.g., Introduction, Appendix)
+7. Clicks "Add Selected Chapters"
+8. Moodle creates activities only for checked chapters
+
+#### Use Cases
+
+**Scenario 1: Skip Optional Content**
+- Book has: Preface, Ch 1-10, Bibliography
+- Instructor unchecks Preface and Bibliography
+- Result: 10 activities created (Ch 1-10 only)
+
+**Scenario 2: Selected Chapters Only**
+- Book has 20 chapters, instructor only wants Ch 1-5
+- Clicks "Deselect All" → Manually checks Ch 1-5
+- Result: 5 activities created
+
+**Scenario 3: All Chapters (Default)**
+- Instructor keeps all checkboxes checked
+- Result: All chapters added (same as previous behavior)
+
+#### Key Decisions
+
+**Why modal instead of inline selection?**
+- Keeps initial content picker clean and simple
+- Confirmation step prevents accidental bulk additions
+- Better UX for reviewing large chapter lists
+
+**Why all chapters checked by default?**
+- Matches "whole book" selection intent
+- Easier to uncheck few chapters than check many
+- Faster workflow for common "all chapters" use case
+
+**Why color-coded badges?**
+- Helps instructors distinguish content types
+- Front/back matter often optional, main chapters required
+- Visual scanning faster than reading full titles
+
+**Why live counter?**
+- Provides immediate feedback on selection
+- Prevents confusion about how many activities will be created
+- Helps verify selection before submission
+
+#### Future Enhancements
+
+Potential improvements based on user feedback:
+- Chapter preview on hover
+- "Select by Part" for grouped selection
+- Show chapter word count or estimated time
+- Search/filter chapters by keyword
+- Remember previous selections for same book
+
+### Container Deployment Pattern
+
+**Critical Discovery**: Plugin directory not mounted as Docker volume in production setup.
+
+**Issue**: Code changes on host don't automatically appear in container.
+
+**Solution**: Always copy files after editing:
+```bash
+# After editing any plugin file
+docker cp /root/pressbooks-lti-platform/plugin/path/to/file.php \
+         pressbooks:/var/www/html/web/app/plugins/pressbooks-lti-platform/path/to/file.php
+
+# Verify deployment
+docker exec pressbooks cat /var/www/html/web/app/plugins/.../file.php | grep "expected_string"
+```
+
+**Why This Design?**
+- Production stability - Prevents accidental file changes
+- Explicit deployments - Forces intentional updates
+- Container immutability - Follows Docker best practices
+
+### Nginx Configuration Pattern
+
+**Issue**: `ERR_CONNECTION_REFUSED` - Nginx failed to start
+
+**Root Cause**: Duplicate IPv6 listen directive
+```nginx
+# /etc/nginx/sites-enabled/moodle.qbnox.com
+listen [::]:443 ssl ipv6only=on;  # ❌ Conflicts with other server blocks
+```
+
+**Solution**: Remove `ipv6only=on` option
+```nginx
+# Both domains can safely listen on [::]:443 without conflict
+listen [::]:443 ssl;  # ✅ Works with multiple server blocks
+listen 443 ssl;
+```
+
+**Pattern for Multi-Domain Nginx:**
+- Use server_name to differentiate virtual hosts
+- Let Nginx handle IPv4/IPv6 automatically
+- Avoid `ipv6only=on` unless truly needed
+
+---
+
+## Testing Status - 2026-02-14
+
+### ✅ Tested and Working
+
+1. **H5P Grade Sync - Point Grading**
+   - H5P completion detected via `h5p_alter_user_result` hook
+   - OAuth2 token acquisition with JWT client assertion
+   - Grade posted to Moodle AGS endpoint
+   - Raw score (5/5) displays correctly in gradebook
+   - LTI user ID correctly used for grade posting
+
+2. **Nginx Service**
+   - Both domains accessible: moodle.lti.qbnox.com, pb.lti.qbnox.com
+   - SSL certificates valid
+   - Reverse proxy routing correctly
+
+3. **Container Deployment**
+   - `docker cp` workflow verified
+   - Files deploy correctly to running containers
+   - Changes take effect immediately (no container restart needed)
+
+### ⏳ Awaiting Testing
+
+1. **Scale Grading**
+   - Code complete and deployed
+   - Needs Moodle activity configured with supported scales
+   - Test with both Competence and Ways of Knowing scales
+   - Verify scale labels display in Moodle gradebook
+
+2. **Chapter Selection Modal**
+   - UI complete and deployed
+   - Needs real Deep Linking flow test from Moodle
+   - Verify AJAX call fetches chapters correctly
+   - Confirm Moodle creates only selected activities
+   - Check activity order matches book structure
+
+---
+
+## Debugging Patterns Established - 2026-02-14
+
+### AGS Troubleshooting Workflow
+
+When grades don't post to Moodle:
+
+1. **Check Pressbooks debug logs:**
+```bash
+docker exec pressbooks tail -100 /var/www/html/web/app/debug.log | grep -E "H5P|AGS"
+```
+
+2. **Look for specific errors:**
+   - `400 No handler found` → URL format issue
+   - `400 Incorrect score received` → Score format or user ID issue
+   - `Client error: POST .../token.php` → OAuth2 authentication issue
+
+3. **Verify OAuth2 token:**
+```php
+// Check if token is being acquired
+[PB-LTI AGS] Fetching OAuth2 token...
+[PB-LTI AGS] Token acquired, expires in 3600s
+```
+
+4. **Verify URL format:**
+```php
+// Should be: .../lineitem/scores?type_id=1
+// Not: .../lineitem?type_id=1/scores
+error_log('[PB-LTI AGS] Posting to: ' . $scores_url);
+```
+
+5. **Verify user ID:**
+```php
+// Should be LTI user ID (e.g., "abc123"), not WordPress user ID (e.g., "125")
+error_log('[PB-LTI AGS] Posting grade for LTI user: ' . $lti_user_id);
+```
+
+### Scale Grading Debug Pattern
+
+```php
+// Log scale detection
+error_log('[PB-LTI Scale] Detected scale type: ' . $scale_type);
+
+// Log percentage to scale mapping
+error_log(sprintf('[PB-LTI Scale] Mapped %.1f%% to scale value %d (%s)',
+    $percentage, $scale_value, $label));
+
+// Log final grade being posted
+error_log('[PB-LTI H5P] Using scale grading: ' . $label . ' (value: ' . $final_score . ')');
+```
+
+### Deep Linking Debug Pattern
+
+```php
+// Log whole book vs selected chapters
+if (!empty($selected_chapter_ids)) {
+    error_log('[PB-LTI Deep Link] Selected chapters: ' . $selected_chapter_ids);
+} else {
+    error_log('[PB-LTI Deep Link] Whole book selected - all chapters');
+}
+
+// Log content items created
+error_log('[PB-LTI Deep Link] Created ' . count($content_items) . ' activities');
+```
+
